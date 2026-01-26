@@ -20,6 +20,10 @@ import geocodeRouter from './routes/geocode.js';
 import tablesRouter from './routes/tables.js';
 import paymentsRouter from './routes/payments.js';
 import chatbotRouter from './routes/chatbot.js';
+import favoritesRouter from './routes/favorites.js';
+import notificationsRouter from './routes/notifications.js';
+import menuCategoriesRouter from './routes/menu-categories.js';
+import waitlistRouter from './routes/waitlist.js';
 
 // Create Express app
 const app = express();
@@ -92,12 +96,16 @@ app.use('/api/reviews', reviewsRouter);
 app.use('/api/staff', staffRouter);
 app.use('/api/verification', verificationRouter);
 app.use('/api/geocode', geocodeRouter);
-// app.use('/api/waitlist', waitlistRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/tables', tablesRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/chatbot', chatbotRouter);
+// New endpoints
+app.use('/api/favorites', favoritesRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/menu-categories', menuCategoriesRouter);
+app.use('/api/waitlist', waitlistRouter);
 
 // ===========================================
 // ERROR HANDLING

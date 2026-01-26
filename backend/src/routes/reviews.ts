@@ -304,4 +304,237 @@ router.get('/stats/:restaurantId', async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * GET /api/reviews/:id
+ * Get a specific review by ID
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        const { data: review, error } = await supabase
+            .from('reviews')
+            .select(`
+                *,
+                users (id, name, avatar_url),
+                restaurants (id, name)
+            `)
+            .eq('id', id)
+            .single();
+
+        if (error || !review) {
+            res.status(404).json({
+                success: false,
+                error: 'Review not found',
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: review,
+        });
+    } catch (error) {
+        console.error('Get review error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+});
+
+/**
+ * PATCH /api/reviews/:id
+ * Update user's own review
+ */
+router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { rating, foodRating, serviceRating, ambianceRating, valueRating, comment, tags } = req.body;
+
+        // Get review and verify ownership
+        const { data: review, error: fetchError } = await supabase
+            .from('reviews')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !review) {
+            res.status(404).json({
+                success: false,
+                error: 'Review not found',
+            });
+            return;
+        }
+
+        if (review.user_id !== req.user!.id) {
+            res.status(403).json({
+                success: false,
+                error: 'Not authorized to update this review',
+            });
+            return;
+        }
+
+        // Build update object
+        const updates: any = { updated_at: new Date().toISOString() };
+        if (rating !== undefined) updates.rating = rating;
+        if (foodRating !== undefined) updates.food_rating = foodRating;
+        if (serviceRating !== undefined) updates.service_rating = serviceRating;
+        if (ambianceRating !== undefined) updates.ambiance_rating = ambianceRating;
+        if (valueRating !== undefined) updates.value_rating = valueRating;
+        if (comment !== undefined) updates.comment = comment;
+        if (tags !== undefined) updates.tags = tags;
+
+        // Update review
+        const { data: updated, error } = await supabase
+            .from('reviews')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating review:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error updating review',
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: updated,
+            message: 'Review updated successfully',
+        });
+    } catch (error) {
+        console.error('Update review error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+});
+
+/**
+ * DELETE /api/reviews/:id
+ * Delete user's own review
+ */
+router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        // Get review and verify ownership
+        const { data: review, error: fetchError } = await supabase
+            .from('reviews')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !review) {
+            res.status(404).json({
+                success: false,
+                error: 'Review not found',
+            });
+            return;
+        }
+
+        if (review.user_id !== req.user!.id && req.user!.role !== 'super_admin') {
+            res.status(403).json({
+                success: false,
+                error: 'Not authorized to delete this review',
+            });
+            return;
+        }
+
+        // Delete review
+        const { error } = await supabase
+            .from('reviews')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting review:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error deleting review',
+            });
+            return;
+        }
+
+        // Update reservation if linked
+        if (review.reservation_id) {
+            await supabase
+                .from('reservations')
+                .update({ has_review: false })
+                .eq('id', review.reservation_id);
+        }
+
+        res.json({
+            success: true,
+            message: 'Review deleted successfully',
+        });
+    } catch (error) {
+        console.error('Delete review error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+});
+
+/**
+ * POST /api/reviews/:id/helpful
+ * Mark a review as helpful
+ */
+router.post('/:id/helpful', authMiddleware, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        // Get current review
+        const { data: review, error: fetchError } = await supabase
+            .from('reviews')
+            .select('helpful_count')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !review) {
+            res.status(404).json({
+                success: false,
+                error: 'Review not found',
+            });
+            return;
+        }
+
+        // Increment helpful count
+        const { data: updated, error } = await supabase
+            .from('reviews')
+            .update({ helpful_count: (review.helpful_count || 0) + 1 })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating helpful count:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error updating helpful count',
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: updated,
+            message: 'Marked as helpful',
+        });
+    } catch (error) {
+        console.error('Mark as helpful error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+});
+
 export default router;
