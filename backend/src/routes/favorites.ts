@@ -35,18 +35,20 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
             return;
         }
 
-        // Check if already favorited
-        const { data: existing } = await supabase
+        // Check if already favorited (use admin to bypass RLS)
+        const { data: existing } = await supabaseAdmin
             .from('favorites')
             .select('id')
             .eq('user_id', req.user!.id)
             .eq('restaurant_id', restaurantId)
-            .single();
+            .maybeSingle();
 
         if (existing) {
-            res.status(400).json({
-                success: false,
-                error: 'Restaurant is already in favorites',
+            // Already favorited - return success anyway (idempotent)
+            res.status(200).json({
+                success: true,
+                data: existing,
+                message: `${restaurant.name} is already in your favorites`,
             });
             return;
         }
@@ -90,7 +92,10 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
  */
 router.get('/my', authMiddleware, async (req: Request, res: Response) => {
     try {
-        const { data: favorites, error } = await supabase
+        console.log('GET /api/favorites/my - User ID:', req.user!.id);
+
+        // Use supabaseAdmin to bypass RLS
+        const { data: favorites, error } = await supabaseAdmin
             .from('favorites')
             .select(`
                 *,
@@ -107,6 +112,8 @@ router.get('/my', authMiddleware, async (req: Request, res: Response) => {
             `)
             .eq('user_id', req.user!.id)
             .order('created_at', { ascending: false });
+
+        console.log('Favorites query result:', { favorites, error });
 
         if (error) {
             console.error('Error fetching favorites:', error);
@@ -164,26 +171,10 @@ router.delete('/:restaurantId', authMiddleware, async (req: Request, res: Respon
     try {
         const { restaurantId } = req.params;
 
-        // Check if favorite exists
-        const { data: favorite, error: fetchError } = await supabase
+        // Delete favorite (will succeed even if not found)
+        const { error, count } = await supabaseAdmin
             .from('favorites')
-            .select('*')
-            .eq('user_id', req.user!.id)
-            .eq('restaurant_id', restaurantId)
-            .single();
-
-        if (fetchError || !favorite) {
-            res.status(404).json({
-                success: false,
-                error: 'Favorite not found',
-            });
-            return;
-        }
-
-        // Delete favorite
-        const { error } = await supabaseAdmin
-            .from('favorites')
-            .delete()
+            .delete({ count: 'exact' })
             .eq('user_id', req.user!.id)
             .eq('restaurant_id', restaurantId);
 
@@ -192,6 +183,14 @@ router.delete('/:restaurantId', authMiddleware, async (req: Request, res: Respon
             res.status(500).json({
                 success: false,
                 error: 'Error removing from favorites',
+            });
+            return;
+        }
+
+        if (count === 0) {
+            res.status(404).json({
+                success: false,
+                error: 'Favorite not found',
             });
             return;
         }
@@ -217,12 +216,22 @@ router.get('/check/:restaurantId', authMiddleware, async (req: Request, res: Res
     try {
         const { restaurantId } = req.params;
 
-        const { data: favorite } = await supabase
+        // Use supabaseAdmin to bypass RLS
+        const { data: favorite, error } = await supabaseAdmin
             .from('favorites')
             .select('id')
             .eq('user_id', req.user!.id)
             .eq('restaurant_id', restaurantId)
-            .single();
+            .maybeSingle();
+
+        if (error) {
+            console.error('Check favorite error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error checking favorite',
+            });
+            return;
+        }
 
         res.json({
             success: true,

@@ -173,9 +173,18 @@ router.get('/:id/status', async (req: Request, res: Response) => {
                 restaurants (id, name, phone)
             `)
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
-        if (error || !entry) {
+        if (error) {
+            console.error('Get waitlist status error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Error fetching waitlist status',
+            });
+            return;
+        }
+
+        if (!entry) {
             res.status(404).json({
                 success: false,
                 error: 'Waitlist entry not found',

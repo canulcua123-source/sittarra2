@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   User, Mail, Phone, MapPin, Bell, Heart, Star,
   ChevronRight, Settings, LogOut, Camera, Shield,
@@ -17,16 +18,42 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useRestaurants } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
 import { User as UserType } from '@/types';
+import { favoriteService, uploadService } from '@/services/api';
+import { useToast } from '@/hooks/use-toast';
+import { useRef } from 'react';
 
 
 const ClientProfilePage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading, updateUser, logout: authLogout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<UserType>>({});
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Map URL tab parameters to internal tab values
+  const tabMapping: Record<string, string> = {
+    'info': 'info',
+    'favoritos': 'favorites',
+    'preferencias': 'preferences',
+    'seguridad': 'security'
+  };
+
+  const urlTab = searchParams.get('tab') || 'info';
+  const activeTab = tabMapping[urlTab] || 'info';
+
+  const handleTabChange = (value: string) => {
+    const reverseMapping: Record<string, string> = {
+      'info': 'info',
+      'favorites': 'favoritos',
+      'preferences': 'preferencias',
+      'security': 'seguridad'
+    };
+    setSearchParams({ tab: reverseMapping[value] || 'info' });
+  };
 
   // Use a refined notification state that defaults to something sensible
   const [notifications, setNotifications] = useState({
@@ -63,12 +90,95 @@ const ClientProfilePage = () => {
   // Fetch restaurants from API
   const { data: restaurants = [] } = useRestaurants();
 
+  // State for favorites from API
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+
+  // Fetch favorites from API
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      if (isAuthenticated) {
+        try {
+          const favorites = await favoriteService.getMyFavorites();
+          const ids = favorites.map((f: any) => f.restaurant_id);
+          setFavoriteIds(ids);
+        } catch (error) {
+          console.error('Error fetching favorites:', error);
+        } finally {
+          setFavoritesLoading(false);
+        }
+      } else {
+        setFavoritesLoading(false);
+      }
+    };
+    fetchFavorites();
+  }, [isAuthenticated]);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Error",
+        description: "Por favor selecciona un archivo de imagen válido",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Error",
+        description: "La imagen no debe pesar más de 5MB",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await uploadService.uploadAvatar(file);
+
+      if (result.success && result.url) {
+        // Update local user state via context
+        updateUser({ avatar: result.url });
+
+        toast({
+          title: "Foto actualizada",
+          description: "Tu foto de perfil se ha actualizado correctamente",
+        });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la foto de perfil",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   if (isLoading || !user) {
     return <div className="min-h-screen flex items-center justify-center">Cargando perfil...</div>;
   }
 
   const favoriteRestaurantsList = restaurants.filter(r =>
-    (user.favoriteRestaurants || []).includes(r.id)
+    favoriteIds.includes(r.id)
   );
 
   const handleSave = () => {
@@ -103,9 +213,21 @@ const ClientProfilePage = () => {
                     {user?.name ? user.name.split(' ').map(n => n[0]).join('') : 'U'}
                   </AvatarFallback>
                 </Avatar>
-                <button className="absolute bottom-0 right-0 p-2 bg-secondary text-secondary-foreground rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Camera className="w-4 h-4" />
+                <button
+                  onClick={handleAvatarClick}
+                  disabled={isUploading}
+                  className="absolute bottom-0 right-0 p-2 bg-secondary text-secondary-foreground rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 hover:cursor-pointer"
+                  title="Cambiar foto de perfil"
+                >
+                  <Camera className={`w-4 h-4 ${isUploading ? 'animate-spin' : ''}`} />
                 </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
               </div>
 
               {/* User Info */}
@@ -123,7 +245,7 @@ const ClientProfilePage = () => {
                   </Badge>
                   <Badge variant="outline" className="gap-2 px-4 py-2">
                     <Heart className="w-4 h-4" />
-                    {(user.favoriteRestaurants || []).length} favoritos
+                    {favoriteIds.length} favoritos
                   </Badge>
                 </div>
               </div>
@@ -150,11 +272,11 @@ const ClientProfilePage = () => {
               </div>
             </motion.div>
           </div>
-        </div>
+        </div >
 
         {/* Main Content */}
-        <div className="container mx-auto px-4 py-8">
-          <Tabs defaultValue="info" className="space-y-8">
+        < div className="container mx-auto px-4 py-8" >
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8">
             <TabsList className="grid grid-cols-4 max-w-2xl mx-auto">
               <TabsTrigger value="info" className="gap-2">
                 <User className="w-4 h-4" />
@@ -436,11 +558,11 @@ const ClientProfilePage = () => {
               </motion.div>
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
+        </div >
+      </main >
 
       <Footer />
-    </div>
+    </div >
   );
 };
 

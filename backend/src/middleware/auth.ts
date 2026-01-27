@@ -373,8 +373,11 @@ export async function authenticateAdmin(
             return;
         }
 
-        // Use restaurantId from token if available, otherwise query
-        let restaurantId = restaurantIdFromToken;
+        // Multi-restaurant logic: 
+        // 1. Try to get restaurantId from X-Restaurant-Id header
+        // 2. Fallback to restaurantId from token
+        // 3. Last fallback: query the first restaurant owned by the user
+        let restaurantId = req.headers['x-restaurant-id'] as string || restaurantIdFromToken;
 
         if (!restaurantId) {
             // Fallback: Get the most recently created restaurant owned by this admin
@@ -387,6 +390,37 @@ export async function authenticateAdmin(
                 .single();
 
             restaurantId = restaurant?.id;
+        }
+
+        // IMPORTANT: Security Validation
+        // If not super_admin, verify the user actually owns or is staff of this specific restaurantId
+        if (userProfile.role !== 'super_admin' && restaurantId) {
+            // Check ownership
+            const { data: isOwner } = await supabaseAdmin
+                .from('restaurants')
+                .select('id')
+                .eq('id', restaurantId)
+                .eq('owner_id', userId)
+                .single();
+
+            if (!isOwner) {
+                // Check if staff
+                const { data: isStaff } = await supabaseAdmin
+                    .from('restaurant_staff')
+                    .select('id')
+                    .eq('restaurant_id', restaurantId)
+                    .eq('user_id', userId)
+                    .eq('is_active', true)
+                    .single();
+
+                if (!isStaff) {
+                    res.status(403).json({
+                        success: false,
+                        error: 'Access denied for this restaurant',
+                    });
+                    return;
+                }
+            }
         }
 
         // Attach user and restaurantId to request

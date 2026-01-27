@@ -78,7 +78,10 @@ router.post('/customer/register', async (req: Request, res: Response) => {
         res.status(201).json({
             success: true,
             data: {
-                user: newUser,
+                user: {
+                    ...newUser,
+                    avatar: newUser.avatar_url
+                },
                 token
             }
         });
@@ -125,7 +128,8 @@ router.post('/customer/login', async (req: Request, res: Response) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    phone: user.phone
+                    phone: user.phone,
+                    avatar: user.avatar_url
                 },
                 token
             }
@@ -228,14 +232,49 @@ router.post('/restaurant/register', async (req: Request, res: Response) => {
                 image_url: restData.image || '',
                 open_time: restData.open_time || '09:00',
                 close_time: restData.close_time || '22:00',
+                settings: {
+                    depositRequired: false,
+                    depositAmount: 0,
+                    depositHours: 24,
+                    reservationDuration: 120,
+                    maxGuestsPerReservation: 10,
+                    advanceBookingDays: 30
+                },
+                opening_hours: {
+                    monday: { open: '09:00', close: '22:00', closed: false },
+                    tuesday: { open: '09:00', close: '22:00', closed: false },
+                    wednesday: { open: '09:00', close: '22:00', closed: false },
+                    thursday: { open: '09:00', close: '22:00', closed: false },
+                    friday: { open: '09:00', close: '23:00', closed: false },
+                    saturday: { open: '09:00', close: '23:00', closed: false },
+                    sunday: { open: '09:00', close: '21:00', closed: false }
+                }
             })
             .select()
             .single();
 
         if (restError) {
             // Rollback user creation (optional but good)
-            await supabase.from('users').delete().eq('id', userId);
+            await supabaseAdmin.from('users').delete().eq('id', userId);
             throw restError;
+        }
+
+        // 3. SEEDING: Create default tables for the new restaurant
+        // This ensures Dashboard logic (occupancy/capacity) doesn't break
+        const defaultTables = [
+            { restaurant_id: restaurant.id, name: 'Mesa 1', capacity: 2, status: 'available' },
+            { restaurant_id: restaurant.id, name: 'Mesa 2', capacity: 2, status: 'available' },
+            { restaurant_id: restaurant.id, name: 'Mesa 3', capacity: 4, status: 'available' },
+            { restaurant_id: restaurant.id, name: 'Mesa 4', capacity: 4, status: 'available' },
+            { restaurant_id: restaurant.id, name: 'Mesa 5', capacity: 6, status: 'available' }
+        ];
+
+        const { error: tablesError } = await supabaseAdmin
+            .from('tables')
+            .insert(defaultTables);
+
+        if (tablesError) {
+            console.error('Initial seeding failed but restaurant was created:', tablesError);
         }
 
         // Generate Token
@@ -330,7 +369,8 @@ router.post('/restaurant/login', async (req: Request, res: Response) => {
                     id: user.id,
                     name: user.name,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
+                    avatar: user.avatar_url
                 },
                 restaurant: restaurant,
                 token
@@ -411,6 +451,63 @@ router.get('/verify', async (req: Request, res: Response) => {
             success: false,
             error: 'Token inválido o expirado'
         });
+    }
+});
+
+// ===========================================
+// UPDATE PROFILE
+// ===========================================
+router.patch('/profile', async (req: Request, res: Response) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ success: false, error: 'No autorizado' });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, env.jwtSecret) as any;
+        const userId = decoded.userId || decoded.id;
+
+        const { name, phone, avatar_url } = req.body;
+
+        // STRICT WHITELISTING: Only allowed fields can be updated
+        // This prevents mass assignment where a user could try to set "role: 'admin'"
+        const updates: any = {};
+        if (name) updates.name = String(name);
+        if (phone) updates.phone = String(phone);
+        if (avatar_url) updates.avatar_url = String(avatar_url);
+
+        updates.updated_at = new Date().toISOString();
+
+        if (Object.keys(updates).length <= 1) { // Only updated_at
+            return res.status(400).json({ success: false, error: 'No se proporcionan campos válidos para actualizar' });
+        }
+
+        const { data: updatedUser, error } = await supabaseAdmin
+            .from('users')
+            .update(updates)
+            .eq('id', userId)
+            .select('*')
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            data: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                role: updatedUser.role,
+                phone: updatedUser.phone,
+                avatar: updatedUser.avatar_url
+            },
+            message: 'Perfil actualizado correctamente'
+        });
+
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ success: false, error: 'Error al actualizar el perfil' });
     }
 });
 

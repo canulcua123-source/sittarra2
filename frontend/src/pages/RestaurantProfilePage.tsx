@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, ChevronLeft, Heart, Users, Calendar, Clock, ArrowRight } from 'lucide-react';
@@ -12,15 +12,90 @@ import RestaurantInfo from '@/components/restaurant/RestaurantInfo';
 import OffersSection from '@/components/restaurant/OffersSection';
 import ReviewsList from '@/components/restaurant/ReviewsList';
 import { useRestaurant, useMenu, useRestaurantOffers, useReviews } from '@/hooks/useData';
+import { favoriteService } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 const RestaurantProfilePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
   const { data: restaurant, isLoading } = useRestaurant(id);
   const { data: menuItems = [] } = useMenu(id);
   const { data: restaurantOffers = [] } = useRestaurantOffers(id);
   const { data: reviews = [] } = useReviews(id); // Fetch real reviews from API
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
+
+  // Check if restaurant is in favorites when component mounts
+  useEffect(() => {
+    const checkFavorite = async () => {
+      if (id && isAuthenticated) {
+        const isFav = await favoriteService.check(id);
+        setIsFavorite(isFav);
+      }
+    };
+    checkFavorite();
+  }, [id, isAuthenticated]);
+
+  const handleToggleFavorite = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Inicia sesión',
+        description: 'Debes iniciar sesión para guardar favoritos',
+        variant: 'destructive',
+      });
+      navigate('/login');
+      return;
+    }
+
+    if (!id || isFavoriteLoading) return;
+
+    setIsFavoriteLoading(true);
+    try {
+      if (isFavorite) {
+        const result = await favoriteService.remove(id);
+        if (result.success) {
+          setIsFavorite(false);
+          toast({
+            title: 'Eliminado de favoritos',
+            description: 'El restaurante se eliminó de tus favoritos',
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: result.error || 'No se pudo eliminar de favoritos',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        const result = await favoriteService.add(id);
+        if (result.success) {
+          setIsFavorite(true);
+          toast({
+            title: '¡Agregado a favoritos!',
+            description: result.message || 'El restaurante se guardó en tus favoritos',
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: result.error || 'No se pudo agregar a favoritos',
+            variant: 'destructive',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast({
+        title: 'Error',
+        description: 'Ocurrió un error inesperado',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsFavoriteLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -121,8 +196,9 @@ const RestaurantProfilePage = () => {
 
             {/* Favorite Button */}
             <button
-              onClick={() => setIsFavorite(!isFavorite)}
-              className="p-3 rounded-full border border-border hover:bg-muted transition-colors"
+              onClick={handleToggleFavorite}
+              disabled={isFavoriteLoading}
+              className={`p-3 rounded-full border border-border hover:bg-muted transition-colors ${isFavoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Heart className={`h-6 w-6 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
             </button>

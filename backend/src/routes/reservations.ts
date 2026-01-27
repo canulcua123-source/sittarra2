@@ -60,25 +60,28 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
         // Check if restaurant requires deposit at this time
         // TODO: Implement peak hour logic based on restaurant settings
 
-        // Create reservation
+        // Create reservation with strict whitelisting to prevent mass assignment
         const qrCode = generateQRCode();
+        const userId = req.user!.id; // Use validated ID from token
 
         const { data: reservation, error } = await supabaseAdmin
             .from('reservations')
             .insert({
                 restaurant_id: restaurantId,
-                user_id: req.user!.id,
+                user_id: userId,
                 table_id: tableId,
                 date,
                 time,
-                guest_count: guestCount,
-                occasion: occasion || null,
-                special_request: specialRequest || null,
+                guest_count: Number(guestCount),
+                occasion: occasion ? String(occasion) : null,
+                special_request: specialRequest ? String(specialRequest) : null,
                 status: depositPaid ? 'confirmed' : 'pending',
-                deposit_paid: depositPaid || false,
-                deposit_amount: depositAmount || null,
+                deposit_paid: Boolean(depositPaid),
+                deposit_amount: depositAmount ? Number(depositAmount) : null,
                 deposit_paid_at: depositPaid ? new Date().toISOString() : null,
                 qr_code: qrCode,
+                // These fields CANNOT be set by the client via mass assignment
+                created_at: new Date().toISOString()
             })
             .select()
             .single();
@@ -250,6 +253,16 @@ router.patch('/:id/status', authMiddleware, async (req: Request, res: Response) 
             return;
         }
 
+        // IMPORTANT: Security Validation for Admin Context
+        const userRestaurantId = (req as any).user?.restaurantId;
+        if (req.user!.role === 'restaurant_admin' && reservation.restaurant_id !== userRestaurantId) {
+            res.status(403).json({
+                success: false,
+                error: 'You do not have permission to modify this reservation (wrong restaurant context)',
+            });
+            return;
+        }
+
         // Update reservation status with admin privileges to ensure RLS doesn't block
         const { data: updatedReservation, error } = await supabaseAdmin
             .from('reservations')
@@ -340,6 +353,16 @@ router.post('/:id/cancel', authMiddleware, async (req: Request, res: Response) =
             res.status(403).json({
                 success: false,
                 error: 'You do not have permission to cancel this reservation',
+            });
+            return;
+        }
+
+        // IMPORTANT: Security Validation for Admin Context
+        const userRestaurantId = (req as any).user?.restaurantId;
+        if (req.user!.role === 'restaurant_admin' && reservation.restaurant_id !== userRestaurantId) {
+            res.status(403).json({
+                success: false,
+                error: 'You do not have permission to cancel this reservation (wrong restaurant context)',
             });
             return;
         }

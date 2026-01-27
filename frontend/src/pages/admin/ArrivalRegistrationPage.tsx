@@ -12,6 +12,7 @@ import { useRestaurantReservations, useConfirmArrival } from '@/hooks/useData';
 import { useRestaurantAuth } from '@/contexts/RestaurantAuthContext';
 import { Reservation } from '@/types';
 import { format } from 'date-fns';
+import QRScanner from '@/components/admin/QRScanner';
 
 const ArrivalRegistrationPage = () => {
     const { restaurant } = useRestaurantAuth();
@@ -194,9 +195,34 @@ const ArrivalRegistrationPage = () => {
                 <Dialog open={isScannerOpen} onOpenChange={setIsScannerOpen}>
                     <DialogContent className="max-w-md">
                         <DialogHeader><DialogTitle>Escanear QR de Reserva</DialogTitle></DialogHeader>
-                        <div className="aspect-square bg-muted rounded-xl flex flex-col items-center justify-center border-2 border-dashed border-primary/20 bg-primary/5">
-                            <Camera className="w-16 h-16 text-primary/40 mb-4" />
-                            <p className="text-xs text-muted-foreground font-medium">Permite el acceso a la cámara</p>
+                        <div className="min-h-[300px] flex flex-col items-center justify-center">
+                            {isScannerOpen && (
+                                <QRScanner
+                                    onScanSuccess={(decodedText) => {
+                                        console.log('Scanned QR:', decodedText);
+                                        // Find reservation by ID or QR code
+                                        const found = reservations.find(r =>
+                                            r.qr_code === decodedText ||
+                                            r.id === decodedText ||
+                                            `MF-${r.id.substring(0, 6)}`.toUpperCase() === decodedText
+                                        );
+
+                                        if (found) {
+                                            setSelectedReservation(found);
+                                            setIsScannerOpen(false);
+                                            setIsConfirmOpen(true);
+                                        } else {
+                                            alert('Reserva no encontrada o inválida para este restaurante.');
+                                        }
+                                    }}
+                                    onScanFailure={(err) => {
+                                        // Optional: handle minor scan errors silently
+                                    }}
+                                />
+                            )}
+                            <p className="text-xs text-muted-foreground mt-4 text-center">
+                                Coloca el código QR del cliente frente a la cámara
+                            </p>
                         </div>
                         <DialogFooter className="sm:justify-center">
                             <Button variant="outline" onClick={() => setIsScannerOpen(false)} className="w-32">Cerrar</Button>

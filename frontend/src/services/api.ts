@@ -23,7 +23,7 @@ import {
 } from '@/types';
 
 // Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
 
 // Helper function for API calls
 async function apiCall<T>(
@@ -70,6 +70,18 @@ async function apiCall<T>(
         }
     }
 
+    // Get restaurant info if available to inject X-Restaurant-Id
+    let activeRestaurantId = null;
+    const restaurantSession = localStorage.getItem('mesafeliz_restaurant_session');
+    if (restaurantSession) {
+        try {
+            const session = JSON.parse(restaurantSession);
+            activeRestaurantId = session.restaurant?.id || session.restaurantId;
+        } catch (e) {
+            console.error('Error parsing restaurant session:', e);
+        }
+    }
+
     // Extract headers from options to prevent overwriting
     const { headers: customHeaders, ...restOptions } = options || {};
 
@@ -78,6 +90,7 @@ async function apiCall<T>(
         headers: {
             'Content-Type': 'application/json',
             ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...(activeRestaurantId && { 'X-Restaurant-Id': activeRestaurantId }),
             ...(customHeaders as Record<string, string>),
         },
     });
@@ -1258,6 +1271,128 @@ export const authService = {
         } catch (error) {
             console.error('Get current user error:', error);
             return null;
+        }
+    },
+};
+
+// ============================================
+// FAVORITE SERVICES
+// ============================================
+
+export const favoriteService = {
+    async add(restaurantId: string): Promise<{ success: boolean; message?: string; error?: string }> {
+        try {
+            const token = localStorage.getItem('mesafeliz_token');
+            const response = await fetch(`${API_BASE_URL}/favorites`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` })
+                },
+                body: JSON.stringify({ restaurantId }),
+            });
+            const data = await response.json();
+            return { success: data.success, message: data.message, error: data.error };
+        } catch (error: any) {
+            console.error('Add favorite error:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    async remove(restaurantId: string): Promise<{ success: boolean; message?: string; error?: string }> {
+        try {
+            const token = localStorage.getItem('mesafeliz_token');
+            const response = await fetch(`${API_BASE_URL}/favorites/${restaurantId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` })
+                },
+            });
+            const data = await response.json();
+            return { success: data.success, message: data.message, error: data.error };
+        } catch (error: any) {
+            console.error('Remove favorite error:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    async check(restaurantId: string): Promise<boolean> {
+        try {
+            const token = localStorage.getItem('mesafeliz_token');
+            if (!token) return false;
+
+            const response = await fetch(`${API_BASE_URL}/favorites/check/${restaurantId}`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+            });
+            const data = await response.json();
+            return data.success && data.data?.isFavorite === true;
+        } catch (error) {
+            console.error('Check favorite error:', error);
+            return false;
+        }
+    },
+
+    async getMyFavorites(): Promise<any[]> {
+        try {
+            const token = localStorage.getItem('mesafeliz_token');
+            if (!token) {
+                console.log('getMyFavorites: No token found');
+                return [];
+            }
+
+            const response = await fetch(`${API_BASE_URL}/favorites/my`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+            });
+            const data = await response.json();
+            console.log('getMyFavorites response:', data);
+            return data.success ? data.data : [];
+        } catch (error) {
+            console.error('Get favorites error:', error);
+            return [];
+        }
+    },
+};
+
+// ============================================
+// UPLOAD SERVICES
+// ============================================
+
+export const uploadService = {
+    async uploadAvatar(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
+        try {
+            const token = localStorage.getItem('mesafeliz_token');
+            if (!token) {
+                return { success: false, error: 'No hay sesión activa' };
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const response = await fetch(`${API_BASE_URL}/upload/avatar`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                return { success: true, url: data.data.url };
+            } else {
+                return { success: false, error: data.error || 'Error al subir imagen' };
+            }
+        } catch (error: any) {
+            console.error('Upload avatar error:', error);
+            return { success: false, error: error.message || 'Error al subir imagen' };
         }
     },
 };

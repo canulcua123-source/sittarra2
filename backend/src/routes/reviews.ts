@@ -14,10 +14,7 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response) => {
 
         let query = supabase
             .from('reviews')
-            .select(`
-                *,
-                users (id, name, avatar_url)
-            `)
+            .select('*')
             .order('created_at', { ascending: false })
             .range(Number(offset), Number(offset) + Number(limit) - 1);
 
@@ -97,20 +94,38 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
             return;
         }
 
-        // Create review
+        // BUSINESS LOGIC: Verify if the user has a completed reservation for this restaurant
+        const { data: pastReservation, error: resError } = await supabase
+            .from('reservations')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('user_id', userId)
+            .eq('status', 'completed')
+            .limit(1)
+            .maybeSingle();
+
+        if (resError || !pastReservation) {
+            res.status(403).json({
+                success: false,
+                error: 'Debes haber completado una visita para poder reseñar este restaurante',
+            });
+            return;
+        }
+
+        // Create review with strict whitelisting
         const { data: review, error } = await supabase
             .from('reviews')
             .insert({
-                restaurant_id: restaurantId,
-                user_id: userId,
-                reservation_id: reservationId || null,
-                rating,
-                food_rating: foodRating || null,
-                service_rating: serviceRating || null,
-                ambiance_rating: ambianceRating || null,
-                value_rating: valueRating || null,
-                comment: comment || null,
-                tags: tags || [],
+                restaurant_id: String(restaurantId),
+                user_id: userId, // From token
+                reservation_id: reservationId ? String(reservationId) : null,
+                rating: Number(rating),
+                food_rating: foodRating ? Number(foodRating) : null,
+                service_rating: serviceRating ? Number(serviceRating) : null,
+                ambiance_rating: ambianceRating ? Number(ambianceRating) : null,
+                value_rating: valueRating ? Number(valueRating) : null,
+                comment: comment ? String(comment) : null,
+                tags: Array.isArray(tags) ? tags : [],
                 created_at: new Date().toISOString()
             })
             .select()
@@ -180,17 +195,14 @@ router.post('/:id/response', authMiddleware, async (req: Request, res: Response)
             return;
         }
 
-        // Verify user owns the restaurant
-        const { data: restaurant } = await supabase
-            .from('restaurants')
-            .select('owner_id')
-            .eq('id', review.restaurant_id)
-            .single();
+        // IMPORTANT: Security Validation for Admin Context
+        const userRestaurantId = (req as any).user?.restaurantId;
+        const userRole = (req as any).user?.role;
 
-        if (!restaurant || restaurant.owner_id !== userId) {
+        if (userRole !== 'super_admin' && review.restaurant_id !== userRestaurantId) {
             res.status(403).json({
                 success: false,
-                error: 'Not authorized to respond to this review',
+                error: 'Not authorized to respond to this review (wrong restaurant context)',
             });
             return;
         }
@@ -232,9 +244,15 @@ router.post('/:id/response', authMiddleware, async (req: Request, res: Response)
  * GET /api/reviews/stats/:restaurantId
  * Get review statistics for a restaurant
  */
-router.get('/stats/:restaurantId', async (req: Request, res: Response) => {
+router.get('/stats/:restaurantId?', async (req: Request, res: Response) => {
     try {
-        const { restaurantId } = req.params;
+        // Use restaurantId from params or from authenticated user context
+        const restaurantId = req.params.restaurantId || (req as any).user?.restaurantId;
+
+        if (!restaurantId) {
+            res.status(400).json({ success: false, error: 'Restaurant ID is required' });
+            return;
+        }
 
         const { data: reviews, error } = await supabase
             .from('reviews')

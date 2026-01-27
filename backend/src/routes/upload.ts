@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
-import { authenticateAdmin } from '../middleware/auth.js';
+import { authenticateAdmin, authMiddleware } from '../middleware/auth.js';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,6 +20,72 @@ const upload = multer({
         } else {
             cb(new Error('Solo se permiten imágenes'));
         }
+    }
+});
+
+/**
+ * POST /api/upload/avatar
+ * Subir foto de perfil de usuario (clientes)
+ */
+router.post('/avatar', authMiddleware, upload.single('image'), async (req: Request, res: Response) => {
+    try {
+        const file = req.file;
+        const userId = req.user!.id;
+
+        if (!file) {
+            res.status(400).json({ success: false, error: 'No se proporcionó ninguna imagen' });
+            return;
+        }
+
+        // Generar nombre único para el archivo
+        const fileExt = file.originalname.split('.').pop() || 'jpg';
+        const fileName = `avatars/${userId}/${uuidv4()}.${fileExt}`;
+
+        // Subir a Supabase Storage
+        const { error: uploadError } = await supabaseAdmin.storage
+            .from('images')
+            .upload(fileName, file.buffer, {
+                contentType: file.mimetype,
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error('Error uploading avatar to storage:', uploadError);
+            res.status(500).json({ success: false, error: 'Error al subir imagen' });
+            return;
+        }
+
+        // Obtener URL pública
+        const { data: urlData } = supabaseAdmin.storage
+            .from('images')
+            .getPublicUrl(fileName);
+
+        const avatarUrl = urlData.publicUrl;
+        console.log('Generated Avatar URL:', avatarUrl);
+
+        // Actualizar el avatar_url del usuario en la base de datos
+        const { error: updateError } = await supabaseAdmin
+            .from('users')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', userId);
+
+        if (updateError) {
+            console.error('Error updating user avatar:', updateError);
+            res.status(500).json({ success: false, error: 'Error al actualizar perfil' });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: {
+                url: avatarUrl,
+                path: fileName
+            },
+            message: 'Foto de perfil actualizada exitosamente'
+        });
+    } catch (error) {
+        console.error('Avatar upload error:', error);
+        res.status(500).json({ success: false, error: 'Error al procesar imagen' });
     }
 });
 
