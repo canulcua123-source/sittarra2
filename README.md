@@ -1,248 +1,123 @@
-# 🍽️ Sittara - Sistema de Gestión de Reservas para Restaurantes
+# 🍽️ Sittara - Sistema de Reservas para Restaurantes
 
-> Plataforma moderna y completa para la gestión de reservas, mesas, menús y reseñas de restaurantes.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
+![Status](https://img.shields.io/badge/status-stable-success.svg)
+![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white)
 
-![Version](https://img.shields.io/badge/version-2.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Docker](https://img.shields.io/badge/docker-ready-brightgreen)
-
-## 🚀 Características
-
-### Para Clientes
-- 🗓️ **Reservas en línea** con selección visual de mesas
-- 📱 **Códigos QR** para check-in rápido
-- ⭐ **Sistema de reseñas** con calificaciones por categoría
-- 💰 **Ofertas y promociones** exclusivas
-- ❤️ **Favoritos** para guardar restaurantes preferidos
-- 🔔 **Notificaciones** en tiempo real
-
-### Para Restaurantes
-- 🏢 **Panel de administración** completo
-- 📊 **Dashboard** con métricas y estadísticas
-- 🪑 **Mapa visual de mesas** arrastra y suelta
-- 📋 **Gestión de menú** con categorías
-- 💵 **Control de anticipos** y depósitos
-- 👥 **Gestión de personal** con permisos
-- 📈 **Reportes** de ocupación y ventas
-
-### Para Staff
-- ✅ **Check-in** de reservas con QR
-- 📱 **App móvil** para tablets
-- 🔄 **Actualización de estado** de mesas
-- 📋 **Lista de espera** en tiempo real
-
-## 🛠️ Stack Tecnológico
-
-### Frontend
-- **React 18** + **TypeScript**
-- **Vite** (build tool)
-- **TailwindCSS** + **Shadcn UI**
-- **React Query** (gestión de estado)
-- **React Router DOM** (routing)
-- **Framer Motion** (animaciones)
-
-### Backend
-- **Node.js** + **Express**
-- **TypeScript**
-- **Supabase** (PostgreSQL)
-- **JWT** (autenticación)
-- **bcrypt** (encriptación)
-
-### DevOps
-- **Docker** + **Docker Compose**
-- **Nginx** (servidor web)
-- **GitHub Actions** (CI/CD - próximamente)
-
-## 📋 Requisitos Previos
-
-- **Node.js** v20 o superior
-- **npm** v9 o superior
-- **Docker** y **Docker Compose** (opcional)
-- Cuenta de **Supabase**
-
-## ⚡ Instalación Rápida
-
-### Opción 1: Con Docker (Recomendado)
-
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/TU-ORGANIZACION/sittara.git
-cd sittara
-
-# 2. Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales de Supabase
-
-# 3. Levantar servicios
-docker-compose up -d
-
-# 4. Acceder a la aplicación
-# Frontend: http://localhost:8080
-# Backend: http://localhost:3001
-```
-
-### Opción 2: Instalación Manual
-
-```bash
-# 1. Clonar el repositorio
-git clone https://github.com/TU-ORGANIZACION/sittara.git
-cd sittara
-
-# 2. Instalar dependencias del frontend
-npm install
-
-# 3. Instalar dependencias del backend
-cd backend
-npm install
-
-# 4. Configurar variables de entorno
-cp .env.example .env
-# Editar con tus credenciales
-
-# 5. Ejecutar base de datos
-# Ir a Supabase SQL Editor y ejecutar: backend/src/scripts/schema.sql
-
-# 6. Iniciar backend
-npm start
-
-# 7. En otra terminal, iniciar frontend
-cd ..
-npm run dev
-```
-
-## 🗃️ Configuración de Base de Datos
-
-1. Crear proyecto en [Supabase](https://supabase.com)
-2. Ir a **SQL Editor**
-3. Ejecutar el script: `backend/src/scripts/schema.sql`
-4. Copiar tus credenciales al archivo `.env`
-
-## 📁 Estructura del Proyecto
-
-```
-sittara/
-├── backend/                # API Backend
-│   ├── src/
-│   │   ├── routes/        # Endpoints API
-│   │   ├── middleware/    # Auth, CORS, etc.
-│   │   ├── scripts/       # Schema SQL
-│   │   └── index.ts       # Entry point
-│   ├── Dockerfile
-│   └── package.json
-│
-├── src/                   # Frontend React
-│   ├── components/        # Componentes reusables
-│   ├── pages/            # Páginas/vistas
-│   ├── contexts/         # Context API
-│   ├── hooks/            # Custom hooks
-│   ├── services/         # API calls
-│   └── types/            # TypeScript types
-│
-├── public/               # Assets estáticos
-├── docker-compose.yml    # Orquestación Docker
-├── nginx.conf           # Configuración Nginx
-└── README.md
-```
-
-## 🔐 Variables de Entorno
-
-```env
-# Supabase
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_KEY=tu-clave-publica
-
-# JWT
-JWT_SECRET=tu-secreto-jwt-seguro
-
-# CORS
-CORS_ORIGIN=http://localhost:8080
-
-# Ports
-BACKEND_PORT=3001
-FRONTEND_PORT=8080
-```
-
-## 🎯 Comandos Disponibles
-
-### Frontend
-```bash
-npm run dev          # Desarrollo
-npm run build        # Build producción
-npm run preview      # Preview build
-npm run lint         # Linter
-```
-
-### Backend
-```bash
-npm start            # Desarrollo
-npm run build        # Compilar TypeScript
-npm run serve        # Producción
-```
-
-### Docker
-```bash
-docker-compose up -d              # Levantar servicios
-docker-compose down               # Detener servicios
-docker-compose logs -f            # Ver logs
-docker-compose up -d --build      # Rebuild y levantar
-```
-
-## 🧪 Testing (Próximamente)
-
-```bash
-npm run test         # Unit tests
-npm run test:e2e     # End-to-end tests
-npm run coverage     # Code coverage
-```
-
-## 📸 Screenshots
-
-### Vista Cliente
-![Home](docs/screenshots/home.png)
-![Restaurante](docs/screenshots/restaurant-profile.png)
-![Reserva](docs/screenshots/reservation.png)
-
-### Panel Admin
-![Dashboard](docs/screenshots/admin-dashboard.png)
-![Mesas](docs/screenshots/table-management.png)
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Por favor:
-
-1. Fork el proyecto
-2. Crea una rama (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add: amazing feature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-## 📝 Roadmap
-
-- [x] Sistema de reservas con mapa visual
-- [x] Panel de administración completo
-- [x] Sistema de reseñas
-- [x] Gestión de personal
-- [x] Dockerización
-- [ ] Pagos con Stripe
-- [ ] Notificaciones push
-- [ ] App móvil (React Native)
-- [ ] Sistema de puntos de lealtad
-- [ ] Integración con WhatsApp
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más información.
-
-## 👥 Autores
-
-- **Tu Nombre** - *Desarrollo Full Stack* - [GitHub](https://github.com/tu-usuario)
-
-## 🙏 Agradecimientos
-
-- [Supabase](https://supabase.com) - Backend as a Service
-- [Shadcn UI](https://ui.shadcn.com) - Componentes UI
-- [Lucide](https://lucide.dev) - Iconos
+**Sittara** es una plataforma integral para la gestión de restaurantes, diseñada para modernizar la experiencia de reservas y la administración operativa. Con una arquitectura modular y escalable, permite a los dueños de restaurantes gestionar mesas, reservas, menús y personal desde un panel unificado.
 
 ---
 
-**Hecho con ❤️ para la industria restaurantera**
+## 🚀 Características Principales
+
+### 📱 Para Clientes
+- **Reservas en Tiempo Real**: Disponibilidad de mesas sincronizada al instante.
+- **Perfil de Usuario**: Historial de visitas, preferencias y gestión de favoritos.
+- **Menú Digital**: Exploración visual de platillos y ofertas especiales.
+
+### 🏢 Para Administradores (Panel Modular)
+El backend ha sido refactorizado en **11 módulos especializados**:
+- **📊 Dashboard**: Métricas clave y estado del restaurante en vivo.
+- **📅 Reservas**: Ciclo completo (Solicitud -> Confirmación -> Check-in -> Finalización).
+- **🪑 Mesas**: Mapa interactivo y gestión de disponibilidad.
+- **⏳ Waitlist**: Gestión eficiente de clientes en espera.
+- **👩‍🍳 Staff**: Control de acceso y roles para meseros/gerentes.
+- **🤖 AI Insights**: Sugerencias operativas basadas en inteligencia artificial.
+- **📈 Reportes**: Análisis detallado de rendimiento y ventas.
+- **⚙️ Configuración**: Ajustes globales del restaurante.
+
+---
+
+## 🛠️ Stack Tecnológico
+
+**Backend**
+- **Runtime**: Node.js & Express
+- **Lenguaje**: TypeScript (Strict Mode)
+- **Base de Datos**: Supabase (PostgreSQL)
+- **Seguridad**: JWT Auth, Helmet, Rate Limiting
+
+**Frontend**
+- **Framework**: React + Vite
+- **UI/UX**: TailwindCSS, Shadcn/UI, Framer Motion
+- **Integraciones**: HTML5-QRCode, Stripe (Pagos)
+
+**Infraestructura**
+- **Contenedores**: Docker & Docker Compose
+- **CI/CD**: GitHub Actions Ready
+
+---
+
+## 🔧 Instalación y Despliegue
+
+### Prerrequisitos
+- Node.js v20+
+- Docker & Docker Compose (Opcional, recomendado)
+
+### Opción A: Despliegue Rápido con Docker (Recomendado)
+
+El proyecto incluye configuración completa para despliegue en contenedores.
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/canulcua123-source/sittarra2.git
+cd sittarra2
+
+# 2. Configurar variables de entorno
+cp frontend/.env.example frontend/.env
+cp backend/.env.example backend/.env
+# (Edita los archivos .env con tus credenciales de Supabase)
+
+# 3. Levantar servicios
+docker-compose up --build -d
+```
+> **Nota**: Se ha parcheado la dependencia `html5-qrcode` para garantizar builds exitosos en producción.
+
+### Opción B: Ejecución Local (Desarrollo)
+
+```bash
+# Backend
+cd backend
+npm install
+npm run dev
+
+# Frontend (En otra terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 📖 Documentación de API
+
+El backend expone una API RESTful organizada por dominios. La autenticación se maneja vía Bearer Tokens.
+
+| Módulo | Endpoint Base | Descripción |
+| :--- | :--- | :--- |
+| **Auth** | `/api/auth` | Login, registro y recuperación de contraseña. |
+| **Dashboard** | `/api/admin/dashboard` | KPIs y estadísticas en tiempo real. |
+| **Reservas** | `/api/admin/reservations` | CRUD completo de reservas. |
+| **Mesas** | `/api/admin/tables` | Estado y configuración de mesas. |
+| **AI** | `/api/admin/ia` | Sugerencias inteligentes para optimización. |
+
+---
+
+## 🤝 Contribución
+
+Las contribuciones son bienvenidas. Por favor, sigue el flujo de trabajo estándar:
+
+1. Haz un Fork del proyecto.
+2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`).
+3. Haz Commit de tus cambios (`git commit -m 'feat: agregar nueva funcionalidad'`).
+4. Haz Push a la rama (`git push origin feature/nueva-funcionalidad`).
+5. Abre un Pull Request.
+
+---
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia MIT. Consulta el archivo `LICENSE` para más detalles.
+
+---
+*Desarrollado con ❤️ por el equipo de Sittara.*
