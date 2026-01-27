@@ -167,3 +167,47 @@ export async function sendReservationConfirmation(to: string, reservation: any):
     `;
     return sendMail({ to, subject, html });
 }
+
+export async function sendPasswordResetEmail({ to, token }: { to: string; token: string }): Promise<EmailResult> {
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+    const subject = 'Restablecer tu contraseña - Mesa Feliz';
+    const html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #e11d48;">Mesa Feliz</h2>
+            <p>Hola,</p>
+            <p>Recibimos una solicitud para restablecer tu contraseña. Haz clic en el siguiente botón para continuar:</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="background: #e11d48; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                    Restablecer Contraseña
+                </a>
+            </div>
+            <p>Si no solicitaste este cambio, puedes ignorar este correo.</p>
+            <p>Este enlace expirará en 1 hora.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 12px; color: #666;">
+                Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+                ${resetUrl}
+            </p>
+        </div>
+    `;
+    return sendMail({ to, subject, html });
+}
+
+export async function sendReservationCancellation(to: string, reservation: any): Promise<EmailResult> {
+    const date = new Date(reservation.date).toLocaleDateString();
+    const subject = `Reserva Cancelada - ${date}`;
+    const html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2 style="color: #ef4444;">Reserva Cancelada</h2>
+            <p>Tu reserva ha sido cancelada.</p>
+            <ul style="background: #fef2f2; padding: 20px; border-radius: 8px; list-style: none;">
+                <li><strong>Fecha:</strong> ${date}</li>
+                <li><strong>Hora:</strong> ${reservation.time}</li>
+                <li><strong>Personas:</strong> ${reservation.guest_count || reservation.guestCount}</li>
+            </ul>
+            ${reservation.deposit_paid ? '<p>Tu depósito será reembolsado automáticamente en los próximos días.</p>' : ''}
+            <p>Esperamos verte pronto.</p>
+        </div>
+    `;
+    return sendMail({ to, subject, html });
+}

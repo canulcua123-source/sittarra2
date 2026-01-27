@@ -568,10 +568,36 @@ export const reservationService = {
     },
 
     async confirmArrival(reservationId: string): Promise<Reservation> {
-        const data = await apiCall<any>(`/reservations/${reservationId}/arrive`, {
+        // Get admin token explicitly to ensure we have permission
+        const session = localStorage.getItem('mesafeliz_restaurant_session');
+        const token = session ? JSON.parse(session).token : null;
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+
+        // If we have an admin token, use it!
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        } else {
+            // Fallback to user token if no admin token
+            const userToken = localStorage.getItem('mesafeliz_token');
+            if (userToken) {
+                headers['Authorization'] = `Bearer ${userToken}`;
+            }
+        }
+
+        const response = await fetch(`${API_BASE_URL}/reservations/${reservationId}/arrive`, {
             method: 'POST',
+            headers
         });
-        return transformReservation(data);
+
+        const json = await response.json();
+        if (!json.success) {
+            throw new Error(json.error || 'Failed to confirm arrival');
+        }
+
+        return transformReservation(json.data);
     },
 
     async markNoShow(reservationId: string): Promise<Reservation> {
@@ -583,6 +609,26 @@ export const reservationService = {
             method: 'POST',
         });
         return transformReservation(data);
+    },
+    async verifyQR(qrCode: string, restaurantId: string): Promise<Reservation> {
+        // Get admin token
+        const session = localStorage.getItem('mesafeliz_restaurant_session');
+        const token = session ? JSON.parse(session).token : null;
+
+        const response = await fetch(`${API_BASE_URL}/reservations/verify-qr`, {
+            method: 'POST',
+            body: JSON.stringify({ qrCode, restaurantId }),
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token && { 'Authorization': `Bearer ${token}` })
+            }
+        });
+
+        const json = await response.json();
+        if (!json.success) {
+            throw new Error(json.error || 'Failed to verify QR code');
+        }
+        return transformReservation(json.data);
     },
 };
 
@@ -1357,6 +1403,34 @@ export const favoriteService = {
             console.error('Get favorites error:', error);
             return [];
         }
+    },
+};
+
+// ============================================
+// NOTIFICATION SERVICES
+// ============================================
+
+export const notificationService = {
+    async getAll(limit = 20): Promise<any[]> {
+        const data = await apiCall<any>(`/notifications?limit=${limit}`);
+        return data || [];
+    },
+
+    async getUnread(): Promise<{ unreadCount: number; data: any[] }> {
+        const data = await apiCall<any>('/notifications/unread');
+        return data || { unreadCount: 0, data: [] };
+    },
+
+    async markAsRead(id: string): Promise<void> {
+        await apiCall<void>(`/notifications/${id}/read`, {
+            method: 'PATCH',
+        });
+    },
+
+    async markAllAsRead(): Promise<void> {
+        await apiCall<void>('/notifications/read-all', {
+            method: 'PATCH',
+        });
     },
 };
 

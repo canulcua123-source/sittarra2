@@ -1,7 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { auditMiddleware } from '../middleware/audit.js';
 import crypto from 'crypto';
+import Stripe from 'stripe';
+import * as emailService from '../services/email.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+    apiVersion: '2023-10-16',
+});
 
 const router = Router();
 
@@ -101,7 +108,14 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
             .update({ status: 'pending' })
             .eq('id', tableId);
 
-        // TODO: Send confirmation email
+        // Send confirmation email
+        if (req.user?.email) {
+            await emailService.sendReservationConfirmation(req.user.email, {
+                ...reservation,
+                guestCount: reservation.guest_count, // Map DB field to service expected field
+            });
+        }
+
         // TODO: Send notification to restaurant
 
         res.status(201).json({
@@ -157,9 +171,19 @@ router.get('/my', authMiddleware, async (req: Request, res: Response) => {
             return;
         }
 
+        // Calculate statistics
+        const stats = {
+            total: reservations.length,
+            completed: reservations.filter((r: any) => r.status === 'completed').length,
+            cancelled: reservations.filter((r: any) => r.status === 'cancelled').length,
+            noShow: reservations.filter((r: any) => r.status === 'no_show').length,
+            upcoming: reservations.filter((r: any) => ['pending', 'confirmed'].includes(r.status) && new Date(r.date) >= new Date()).length
+        };
+
         res.json({
             success: true,
             data: reservations,
+            stats
         });
     } catch (error) {
         console.error('My reservations error:', error);
@@ -326,98 +350,116 @@ router.patch('/:id/status', authMiddleware, async (req: Request, res: Response) 
  * POST /api/reservations/:id/cancel
  * Cancel a reservation
  */
-router.post('/:id/cancel', authMiddleware, async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        const { reason } = req.body;
+router.post('/:id/cancel',
+    authMiddleware,
+    auditMiddleware({ action: 'cancel_reservation', entityType: 'reservation' }),
+    async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            const { reason } = req.body;
 
-        // Get the reservation
-        const { data: reservation, error: fetchError } = await supabase
-            .from('reservations')
-            .select('*')
-            .eq('id', id)
-            .single();
+            // Get the reservation
+            const { data: reservation, error: fetchError } = await supabase
+                .from('reservations')
+                .select('*')
+                .eq('id', id)
+                .single();
 
-        if (fetchError || !reservation) {
-            res.status(404).json({
-                success: false,
-                error: 'Reservation not found',
+            if (fetchError || !reservation) {
+                res.status(404).json({
+                    success: false,
+                    error: 'Reservation not found',
+                });
+                return;
+            }
+
+            // Check if user owns this reservation
+            if (reservation.user_id !== req.user!.id &&
+                req.user!.role !== 'restaurant_admin' &&
+                req.user!.role !== 'super_admin') {
+                res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to cancel this reservation',
+                });
+                return;
+            }
+
+            // IMPORTANT: Security Validation for Admin Context
+            const userRestaurantId = (req as any).user?.restaurantId;
+            if (req.user!.role === 'restaurant_admin' && reservation.restaurant_id !== userRestaurantId) {
+                res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to cancel this reservation (wrong restaurant context)',
+                });
+                return;
+            }
+
+            // Check if reservation can be cancelled
+            if (['completed', 'cancelled', 'no_show'].includes(reservation.status)) {
+                res.status(400).json({
+                    success: false,
+                    error: 'This reservation cannot be cancelled',
+                });
+                return;
+            }
+
+            // Cancel the reservation
+            const { error } = await supabase
+                .from('reservations')
+                .update({
+                    status: 'cancelled',
+                    special_request: reservation.special_request
+                        ? `${reservation.special_request}\n\n[Cancelled: ${reason || 'No reason provided'}]`
+                        : `[Cancelled: ${reason || 'No reason provided'}]`,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', id);
+
+            if (error) {
+                console.error('Error cancelling reservation:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Error cancelling reservation',
+                });
+                return;
+            }
+
+            // Free up the table
+            await supabase
+                .from('tables')
+                .update({ status: 'available' })
+                .eq('id', reservation.table_id);
+
+            // Send cancellation email
+            if (req.user?.email) {
+                await emailService.sendReservationCancellation(req.user.email, reservation);
+            }
+
+            // Process refund if deposit was paid
+            if (reservation.deposit_paid && reservation.payment_intent_id) {
+                try {
+                    await stripe.refunds.create({
+                        payment_intent: reservation.payment_intent_id,
+                    });
+                    console.log(`Refund processed for reservation ${id}`);
+                } catch (refundError) {
+                    console.error(`Error processing refund for reservation ${id}:`, refundError);
+                    // We don't fail the cancellation if refund fails, but should log it
+                }
+            }
+
+            res.json({
+                success: true,
+                message: 'Reservation cancelled successfully',
             });
-            return;
-        }
-
-        // Check if user owns this reservation
-        if (reservation.user_id !== req.user!.id &&
-            req.user!.role !== 'restaurant_admin' &&
-            req.user!.role !== 'super_admin') {
-            res.status(403).json({
-                success: false,
-                error: 'You do not have permission to cancel this reservation',
-            });
-            return;
-        }
-
-        // IMPORTANT: Security Validation for Admin Context
-        const userRestaurantId = (req as any).user?.restaurantId;
-        if (req.user!.role === 'restaurant_admin' && reservation.restaurant_id !== userRestaurantId) {
-            res.status(403).json({
-                success: false,
-                error: 'You do not have permission to cancel this reservation (wrong restaurant context)',
-            });
-            return;
-        }
-
-        // Check if reservation can be cancelled
-        if (['completed', 'cancelled', 'no_show'].includes(reservation.status)) {
-            res.status(400).json({
-                success: false,
-                error: 'This reservation cannot be cancelled',
-            });
-            return;
-        }
-
-        // Cancel the reservation
-        const { error } = await supabase
-            .from('reservations')
-            .update({
-                status: 'cancelled',
-                special_request: reservation.special_request
-                    ? `${reservation.special_request}\n\n[Cancelled: ${reason || 'No reason provided'}]`
-                    : `[Cancelled: ${reason || 'No reason provided'}]`,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', id);
-
-        if (error) {
-            console.error('Error cancelling reservation:', error);
+        } catch (error) {
+            console.error('Cancel reservation error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Error cancelling reservation',
+                error: 'Internal server error',
             });
-            return;
         }
-
-        // Free up the table
-        await supabase
-            .from('tables')
-            .update({ status: 'available' })
-            .eq('id', reservation.table_id);
-
-        // TODO: Send cancellation email
-        // TODO: Process refund if deposit was paid
-
-        res.json({
-            success: true,
-            message: 'Reservation cancelled successfully',
-        });
-    } catch (error) {
-        console.error('Cancel reservation error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error',
-        });
-    }
-});
+    });
 
 /**
  * POST /api/reservations/:id/arrive
@@ -530,5 +572,195 @@ router.post('/:id/complete', authMiddleware, async (req: Request, res: Response)
         });
     }
 });
+
+
+/**
+ * POST /api/reservations/verify-qr
+ * Verify a reservation via QR code
+ */
+router.post('/verify-qr', authMiddleware, async (req: Request, res: Response) => {
+    try {
+        const { qrCode, restaurantId } = req.body;
+
+        if (!qrCode || !restaurantId) {
+            res.status(400).json({
+                success: false,
+                error: 'QR code and restaurant ID are required',
+            });
+            return;
+        }
+
+        // 1. Try exact match by qr_code column first
+        let { data: reservation, error } = await supabaseAdmin
+            .from('reservations')
+            .select(`
+                *,
+                users (id, name, email, phone, avatar_url),
+                tables (id, number, name)
+            `)
+            .eq('restaurant_id', restaurantId)
+            .eq('qr_code', qrCode)
+            .single();
+
+        // 2. If not found, try by ID (if it looks like a UUID)
+        if (!reservation && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(qrCode)) {
+            const { data: byId } = await supabaseAdmin
+                .from('reservations')
+                .select(`
+                    *,
+                    users (id, name, email, phone, avatar_url),
+                    tables (id, number, name)
+                `)
+                .eq('restaurant_id', restaurantId)
+                .eq('id', qrCode)
+                .single();
+
+            reservation = byId;
+        }
+
+        // 3. Last resort: internal logic check if qrCode matches generated format from ID
+        // (This might be slow if we have to scan, but we can assume normal flow hits step 1)
+
+        if (!reservation) {
+            res.status(404).json({
+                success: false,
+                error: 'Reserva no encontrada o inválida para este restaurante.',
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: reservation,
+        });
+
+    } catch (error) {
+        console.error('Verify QR error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+});
+/**
+ * PATCH /api/reservations/:id
+ * Reschedule a reservation (update date, time, guest count)
+ */
+router.patch('/:id',
+    authMiddleware,
+    auditMiddleware({ action: 'reschedule_reservation', entityType: 'reservation' }),
+    async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            const { date, time, guestCount } = req.body;
+
+            if (!date && !time && !guestCount) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'At least one field (date, time, guestCount) is required for update'
+                });
+            }
+
+            // Get the current reservation
+            const { data: reservation, error: fetchError } = await supabaseAdmin
+                .from('reservations')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (fetchError || !reservation) {
+                return res.status(404).json({ success: false, error: 'Reservation not found' });
+            }
+
+            // Check ownership
+            if (reservation.user_id !== req.user!.id && req.user!.role !== 'super_admin') {
+                return res.status(403).json({ success: false, error: 'Unauthorized to modify this reservation' });
+            }
+
+            // Validate new capacity if guestCount changed
+            const finalGuestCount = guestCount ? Number(guestCount) : reservation.guest_count;
+            const finalDate = date || reservation.date;
+            const finalTime = time || reservation.time;
+
+            // Check if the new date is a holiday
+            if (date) {
+                const { data: restaurant } = await supabaseAdmin
+                    .from('restaurants')
+                    .select('holidays')
+                    .eq('id', reservation.restaurant_id)
+                    .single();
+
+                const holidays = restaurant?.holidays || [];
+                const isHoliday = holidays.some((h: any) => h.date === finalDate && h.closed);
+
+                if (isHoliday) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'The restaurant is closed on the selected holiday date'
+                    });
+                }
+            }
+
+            if (guestCount) {
+                const { data: table } = await supabase
+                    .from('tables')
+                    .select('capacity')
+                    .eq('id', reservation.table_id)
+                    .single();
+
+                if (table && finalGuestCount > table.capacity) {
+                    return res.status(400).json({
+                        success: false,
+                        error: `The current table only has a capacity of ${table.capacity} guests`
+                    });
+                }
+            }
+
+            // Check availability for the new slot if date or time changed
+            if (date || time) {
+                const { data: conflict } = await supabase
+                    .from('reservations')
+                    .select('id')
+                    .eq('table_id', reservation.table_id)
+                    .eq('date', finalDate)
+                    .eq('time', finalTime)
+                    .neq('id', id) // Exclude current reservation
+                    .not('status', 'in', '("cancelled","no_show")')
+                    .single();
+
+                if (conflict) {
+                    return res.status(409).json({
+                        success: false,
+                        error: 'The table is already reserved at the new selected time'
+                    });
+                }
+            }
+
+            // Perform update
+            const { data: updatedReservation, error: updateError } = await supabaseAdmin
+                .from('reservations')
+                .update({
+                    date: finalDate,
+                    time: finalTime,
+                    guest_count: finalGuestCount,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (updateError) throw updateError;
+
+            res.json({
+                success: true,
+                data: updatedReservation,
+                message: 'Reservation rescheduled successfully'
+            });
+
+        } catch (error) {
+            console.error('Reschedule reservation error:', error);
+            res.status(500).json({ success: false, error: 'Internal server error' });
+        }
+    });
 
 export default router;

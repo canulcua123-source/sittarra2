@@ -13,7 +13,7 @@ router.get('/', async (req: Request, res: Response) => {
 
         const { data: restaurant, error } = await supabaseAdmin
             .from('restaurants')
-            .select('settings, opening_hours, name, description, phone, address')
+            .select('settings, opening_hours, name, description, phone, address, holidays')
             .eq('id', restaurantId)
             .single();
 
@@ -27,7 +27,8 @@ router.get('/', async (req: Request, res: Response) => {
                 name: restaurant.name,
                 description: restaurant.description,
                 phone: restaurant.phone,
-                address: restaurant.address
+                address: restaurant.address,
+                holidays: restaurant.holidays || []
             }
         });
     } catch (error) {
@@ -78,6 +79,7 @@ router.patch('/', async (req: Request, res: Response) => {
             updates.settings = { ...(existing?.settings || {}), ...settings };
         }
 
+        if (req.body.holidays) updates.holidays = req.body.holidays; // Allow updating holidays structure
         if (opening_hours) updates.opening_hours = opening_hours;
         if (name) updates.name = name;
         if (description) updates.description = description;

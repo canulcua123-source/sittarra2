@@ -13,6 +13,7 @@ import staffRouter from './staff.js';
 import settingsRouter from './settings.js';
 import aiRouter from './ai.js';
 import reportsRouter from './reports.js';
+import paymentsRouter from './payments.js';
 
 const router = Router();
 
@@ -37,6 +38,7 @@ router.use('/usuarios', staffRouter);
 router.use('/settings', settingsRouter);
 router.use('/configuracion', settingsRouter); // Alias para compatibilidad
 router.use('/ia', aiRouter);
+router.use('/payments', paymentsRouter);
 router.get('/ai-suggestions', (req, res) => res.redirect(307, './ia/suggestions')); // Redirección de compatibilidad
 router.get('/ia-sugerencias', (req, res) => res.redirect(307, './ia/suggestions')); // Redirección adicional
 

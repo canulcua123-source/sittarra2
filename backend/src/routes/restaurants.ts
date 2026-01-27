@@ -17,6 +17,9 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response) => {
             priceRange,
             isOpen,
             hasOffers,
+            lat,
+            lng,
+            radius = 10,
             limit = 20,
             offset = 0
         } = req.query;
@@ -42,6 +45,24 @@ router.get('/', optionalAuthMiddleware, async (req: Request, res: Response) => {
 
         if (priceRange && typeof priceRange === 'string') {
             query = query.eq('price_range', priceRange);
+        }
+
+        // Geolocation Filter (Simple Bounding Box approx)
+        if (lat && lng) {
+            const latitude = parseFloat(lat as string);
+            const longitude = parseFloat(lng as string);
+            const rad = parseFloat(radius as string);
+
+            // ~1 degree of latitude is approx 111km
+            const latDelta = rad / 111;
+            // ~1 degree of longitude varies, but at typical latitudes:
+            const lngDelta = rad / (111 * Math.cos(latitude * (Math.PI / 180)));
+
+            query = query
+                .gte('latitude', latitude - latDelta)
+                .lte('latitude', latitude + latDelta)
+                .gte('longitude', longitude - lngDelta)
+                .lte('longitude', longitude + lngDelta);
         }
 
         // Pagination
@@ -317,10 +338,10 @@ router.get('/:id/timeslots', async (req: Request, res: Response) => {
             return;
         }
 
-        // Get restaurant settings
+        // Get restaurant settings and holidays
         const { data: restaurant, error: restaurantError } = await supabase
             .from('restaurants')
-            .select('settings, opening_hours')
+            .select('settings, opening_hours, holidays')
             .eq('id', id)
             .single();
 
@@ -328,6 +349,19 @@ router.get('/:id/timeslots', async (req: Request, res: Response) => {
             res.status(404).json({
                 success: false,
                 error: 'Restaurant not found',
+            });
+            return;
+        }
+
+        // Check for holidays
+        const holidays = restaurant.holidays || [];
+        const isHoliday = holidays.some((h: any) => h.date === date && h.closed);
+
+        if (isHoliday) {
+            res.json({
+                success: true,
+                data: [],
+                message: 'Restaurant is closed on this date'
             });
             return;
         }
@@ -376,6 +410,95 @@ router.get('/:id/timeslots', async (req: Request, res: Response) => {
             success: false,
             error: 'Internal server error',
         });
+    }
+});
+
+/**
+ * GET /api/restaurants/:id/availability
+ * Get availability over a range of dates
+ */
+router.get('/:id/availability', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { startDate, endDate, guests } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({
+                success: false,
+                error: 'startDate and endDate are required',
+            });
+        }
+
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        const guestCount = parseInt(guests as string || '2');
+
+        // Limit range to 14 days for performance
+        const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays > 14) {
+            return res.status(400).json({
+                success: false,
+                error: 'Range cannot exceed 14 days',
+            });
+        }
+
+        // Get restaurant info
+        const { data: restaurant } = await supabase
+            .from('restaurants')
+            .select('opening_hours, settings, holidays')
+            .eq('id', id)
+            .single();
+
+        const holidays = restaurant?.holidays || [];
+
+        // Get all reservations in this range
+        const { data: reservations } = await supabase
+            .from('reservations')
+            .select('date, time')
+            .eq('restaurant_id', id)
+            .gte('date', startDate as string)
+            .lte('date', endDate as string)
+            .in('status', ['pending', 'confirmed', 'arrived']);
+
+        const results = [];
+        const current = new Date(start);
+
+        while (current <= end) {
+            const dateStr = current.toISOString().split('T')[0];
+            const isHoliday = holidays.some((h: any) => h.date === dateStr && h.closed);
+
+            const dailyReserved = reservations?.filter(r => r.date === dateStr).map(r => r.time) || [];
+
+            // Simple slot logic (can be more complex based on table capacity)
+            const availableSlots = [];
+
+            if (!isHoliday) {
+                for (let h = 13; h <= 22; h++) {
+                    const clock = `${h.toString().padStart(2, '0')}:00`;
+                    const clockHalf = `${h.toString().padStart(2, '0')}:30`;
+
+                    if (!dailyReserved.includes(clock)) availableSlots.push(clock);
+                    if (!dailyReserved.includes(clockHalf)) availableSlots.push(clockHalf);
+                }
+            }
+
+            results.push({
+                date: dateStr,
+                available: availableSlots.length > 0,
+                slots: availableSlots
+            });
+
+            current.setDate(current.getDate() + 1);
+        }
+
+        res.json({
+            success: true,
+            data: results
+        });
+
+    } catch (error) {
+        console.error('Availability range error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { env } from '../config/env.js';
 import crypto from 'crypto';
+import { sendPasswordResetEmail, sendVerificationCode, sendWelcomeEmail } from '../services/email.js';
 
 const router = Router();
 
@@ -74,6 +75,18 @@ router.post('/customer/register', async (req: Request, res: Response) => {
             env.jwtSecret,
             { expiresIn: '7d' }
         );
+
+        // Send Welcome email and Verification code
+        try {
+            await sendWelcomeEmail(newUser.email, process.env.RESTAURANT_NAME || 'Mesa Feliz');
+
+            // Generate and send verification code
+            const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+            await supabaseAdmin.from('users').update({ verification_code: verificationCode }).eq('id', newUser.id);
+            await sendVerificationCode({ to: newUser.email, code: verificationCode });
+        } catch (emailError) {
+            console.error('Error sending secondary registration emails:', emailError);
+        }
 
         res.status(201).json({
             success: true,
@@ -508,6 +521,180 @@ router.patch('/profile', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Update profile error:', error);
         res.status(500).json({ success: false, error: 'Error al actualizar el perfil' });
+    }
+});
+
+
+// ===========================================
+// PASSWORD RECOVERY
+// ===========================================
+
+// Forgot Password - Request reset link
+router.post('/forgot-password', async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email es requerido' });
+        }
+
+        // Check if user exists
+        const { data: user, error } = await supabaseAdmin
+            .from('users')
+            .select('id, email, name')
+            .eq('email', email.toLowerCase())
+            .single();
+
+        if (error || !user) {
+            // Return success even if user not found for security (prevent email enumeration)
+            return res.json({
+                success: true,
+                message: 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña'
+            });
+        }
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenExpires = new Date();
+        resetTokenExpires.setHours(resetTokenExpires.getHours() + 1); // 1 hour expiry
+
+        // Save token to user record
+        const { error: updateError } = await supabaseAdmin
+            .from('users')
+            .update({
+                reset_token: resetToken,
+                reset_token_expires: resetTokenExpires.toISOString()
+            })
+            .eq('id', user.id);
+
+        if (updateError) throw updateError;
+
+        // Send email
+        await sendPasswordResetEmail({ to: user.email, token: resetToken });
+
+        res.json({
+            success: true,
+            message: 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña'
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({ success: false, error: 'Error al procesar la solicitud' });
+    }
+});
+
+// Reset Password - Complete reset using token
+router.post('/reset-password', async (req: Request, res: Response) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        if (!token || !newPassword) {
+            return res.status(400).json({ success: false, error: 'Token y nueva contraseña son requeridos' });
+        }
+
+        // Find user with valid token
+        const { data: user, error } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('reset_token', token)
+            .gt('reset_token_expires', new Date().toISOString())
+            .single();
+
+        if (error || !user) {
+            return res.status(400).json({ success: false, error: 'Token inválido o expirado' });
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(newPassword, salt);
+
+        // Update password and clear reset token
+        const { error: updateError } = await supabaseAdmin
+            .from('users')
+            .update({
+                password_hash: passwordHash,
+                reset_token: null,
+                reset_token_expires: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', user.id);
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, message: 'Contraseña restablecida correctamente' });
+
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ success: false, error: 'Error al restablecer la contraseña' });
+    }
+});
+
+// ===========================================
+// EMAIL VERIFICATION
+// ===========================================
+
+// Request Verification Code
+router.post('/verification/request', async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email es requerido' });
+        }
+
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        const { error } = await supabaseAdmin
+            .from('users')
+            .update({ verification_code: verificationCode })
+            .eq('email', email.toLowerCase());
+
+        if (error) throw error;
+
+        await sendVerificationCode({ to: email, code: verificationCode });
+
+        res.json({ success: true, message: 'Código de verificación enviado' });
+
+    } catch (error) {
+        console.error('Verification request error:', error);
+        res.status(500).json({ success: false, error: 'Error al enviar código' });
+    }
+});
+
+// Verify Email Code
+router.post('/verification/verify', async (req: Request, res: Response) => {
+    try {
+        const { email, code } = req.body;
+
+        if (!email || !code) {
+            return res.status(400).json({ success: false, error: 'Email y código son requeridos' });
+        }
+
+        const { data: user, error } = await supabaseAdmin
+            .from('users')
+            .select('id, verification_code')
+            .eq('email', email.toLowerCase())
+            .single();
+
+        if (error || !user || user.verification_code !== code) {
+            return res.status(400).json({ success: false, error: 'Código inválido' });
+        }
+
+        const { error: updateError } = await supabaseAdmin
+            .from('users')
+            .update({
+                is_verified: true,
+                verification_code: null
+            })
+            .eq('id', user.id);
+
+        if (updateError) throw updateError;
+
+        res.json({ success: true, message: 'Email verificado correctamente' });
+
+    } catch (error) {
+        console.error('Email verification error:', error);
+        res.status(500).json({ success: false, error: 'Error al verificar email' });
     }
 });
 

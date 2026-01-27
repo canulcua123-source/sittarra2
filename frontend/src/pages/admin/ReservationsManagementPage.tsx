@@ -138,6 +138,40 @@ const ReservationsManagementPage = () => {
     const pendingCount = reservations.filter(r => r.status === 'pending').length;
     const confirmedCount = reservations.filter(r => r.status === 'confirmed').length;
 
+    const handleExport = () => {
+        if (!reservations.length) {
+            toast.error('No hay datos para exportar');
+            return;
+        }
+
+        const headers = ['ID', 'Cliente', 'Teléfono', 'Fecha', 'Hora', 'Mesa', 'Personas', 'Estado', 'Anticipo', 'Solicitud Especial'];
+        const csvContent = [
+            headers.join(','),
+            ...reservations.map(r => [
+                r.id,
+                `"${r.customerName}"`,
+                `"${r.customerPhone || ''}"`,
+                r.date,
+                r.time,
+                r.table?.number || 'Sin mesa',
+                r.guestCount,
+                r.status,
+                r.depositAmount || 0,
+                `"${r.specialRequest || ''}"`
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `reservas_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Archivo exportado exitosamente');
+    };
+
     if (isLoading) {
         return (
             <AdminLayout>
@@ -161,7 +195,7 @@ const ReservationsManagementPage = () => {
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" className="gap-2">
+                        <Button variant="outline" className="gap-2" onClick={handleExport}>
                             <Download className="w-4 h-4" />
                             Exportar
                         </Button>

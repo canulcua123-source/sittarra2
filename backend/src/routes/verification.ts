@@ -1,10 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { sendVerificationCode } from '../services/email.js';
+import { supabaseAdmin } from '../config/supabase.js';
 
 const router = Router();
-
-// In-memory store for verification codes (consider Redis for production)
-const verificationCodes = new Map<string, { code: string; expires: Date; attempts: number }>();
 
 /**
  * POST /api/verification/send-code
@@ -23,31 +21,34 @@ router.post('/send-code', async (req: Request, res: Response) => {
 
         // Generate 6-digit code
         const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-        // Store code with 10-minute expiration
-        verificationCodes.set(email.toLowerCase(), {
-            code,
-            expires: new Date(Date.now() + 10 * 60 * 1000),
-            attempts: 0
-        });
+        // Store code in DB with 10-minute expiration
+        const { error: dbError } = await supabaseAdmin
+            .from('verification_codes')
+            .upsert({
+                email: email.toLowerCase(),
+                code,
+                expires_at: expiresAt,
+                attempts: 0
+            }, { onConflict: 'email' }); // Assuming email is unique or we handle cleanup
+
+        if (dbError) throw dbError;
 
         console.log(`📧 Verification code for ${email}: ${code}`);
-        console.log(`📧 Attempting to send email via Gmail...`);
 
-        // Send real email using Gmail
+        // Send real email
         const result = await sendVerificationCode({ to: email, code });
 
         if (result.success) {
-            console.log(`✅ Email sent successfully to ${email}`);
             res.json({
                 success: true,
                 message: 'Código de verificación enviado a tu correo'
             });
         } else {
-            console.error(`❌ Failed to send email to ${email}:`, result.error);
             res.status(500).json({
                 success: false,
-                error: `No se pudo enviar el correo: ${result.error?.message || JSON.stringify(result.error) || 'Error desconocido'}`
+                error: `No se pudo enviar el correo: ${result.error?.message || 'Error desconocido'}`
             });
         }
 
@@ -75,9 +76,14 @@ router.post('/verify-code', async (req: Request, res: Response) => {
             });
         }
 
-        const stored = verificationCodes.get(email.toLowerCase());
+        // Fetch code from DB
+        const { data: stored, error } = await supabaseAdmin
+            .from('verification_codes')
+            .select('*')
+            .eq('email', email.toLowerCase())
+            .single();
 
-        if (!stored) {
+        if (error || !stored) {
             return res.status(400).json({
                 success: false,
                 error: 'No se encontró código de verificación. Solicita uno nuevo.'
@@ -85,8 +91,8 @@ router.post('/verify-code', async (req: Request, res: Response) => {
         }
 
         // Check if expired
-        if (stored.expires < new Date()) {
-            verificationCodes.delete(email.toLowerCase());
+        if (new Date(stored.expires_at) < new Date()) {
+            await supabaseAdmin.from('verification_codes').delete().eq('email', email.toLowerCase());
             return res.status(400).json({
                 success: false,
                 error: 'El código ha expirado. Solicita uno nuevo.'
@@ -95,7 +101,7 @@ router.post('/verify-code', async (req: Request, res: Response) => {
 
         // Check attempts (max 5)
         if (stored.attempts >= 5) {
-            verificationCodes.delete(email.toLowerCase());
+            await supabaseAdmin.from('verification_codes').delete().eq('email', email.toLowerCase());
             return res.status(400).json({
                 success: false,
                 error: 'Demasiados intentos. Solicita un nuevo código.'
@@ -104,16 +110,25 @@ router.post('/verify-code', async (req: Request, res: Response) => {
 
         // Verify code
         if (stored.code !== code) {
-            stored.attempts++;
+            await supabaseAdmin
+                .from('verification_codes')
+                .update({ attempts: stored.attempts + 1 })
+                .eq('email', email.toLowerCase());
+
             return res.status(400).json({
                 success: false,
                 error: 'Código incorrecto',
-                attemptsRemaining: 5 - stored.attempts
+                attemptsRemaining: 5 - (stored.attempts + 1)
             });
         }
 
-        // Success - delete the code
-        verificationCodes.delete(email.toLowerCase());
+        // Success - delete the code and update user if exists
+        await supabaseAdmin.from('verification_codes').delete().eq('email', email.toLowerCase());
+
+        await supabaseAdmin
+            .from('users')
+            .update({ is_verified: true })
+            .eq('email', email.toLowerCase());
 
         res.json({
             success: true,
@@ -135,6 +150,8 @@ router.post('/verify-code', async (req: Request, res: Response) => {
  * Resend verification code
  */
 router.post('/resend-code', async (req: Request, res: Response) => {
+    // Re-use logic from send-code via a redirect or just duplicate for simplicity in this flow
+    // or better yet, refactor send-code logic into a helper function (outside scope of quick fix but recommended)
     try {
         const { email } = req.body;
 
@@ -145,25 +162,23 @@ router.post('/resend-code', async (req: Request, res: Response) => {
             });
         }
 
-        // Generate new 6-digit code
         const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-        // Store code with 10-minute expiration
-        verificationCodes.set(email.toLowerCase(), {
-            code,
-            expires: new Date(Date.now() + 10 * 60 * 1000),
-            attempts: 0
-        });
+        await supabaseAdmin
+            .from('verification_codes')
+            .upsert({
+                email: email.toLowerCase(),
+                code,
+                expires_at: expiresAt,
+                attempts: 0
+            }, { onConflict: 'email' });
 
-        console.log(`📧 Resent verification code for ${email}: ${code}`);
-
-        // Send real email using Resend
         const result = await sendVerificationCode({ to: email, code });
 
         res.json({
             success: true,
             message: result.success ? 'Nuevo código enviado a tu correo' : 'Código generado (Error al enviar email)',
-            devCode: code,
             error: result.error
         });
 

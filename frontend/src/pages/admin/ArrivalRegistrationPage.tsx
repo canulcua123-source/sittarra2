@@ -13,6 +13,7 @@ import { useRestaurantAuth } from '@/contexts/RestaurantAuthContext';
 import { Reservation } from '@/types';
 import { format } from 'date-fns';
 import QRScanner from '@/components/admin/QRScanner';
+import { reservationService } from '@/services/api';
 
 const ArrivalRegistrationPage = () => {
     const { restaurant } = useRestaurantAuth();
@@ -198,20 +199,17 @@ const ArrivalRegistrationPage = () => {
                         <div className="min-h-[300px] flex flex-col items-center justify-center">
                             {isScannerOpen && (
                                 <QRScanner
-                                    onScanSuccess={(decodedText) => {
+                                    onScanSuccess={async (decodedText) => {
                                         console.log('Scanned QR:', decodedText);
-                                        // Find reservation by ID or QR code
-                                        const found = reservations.find(r =>
-                                            r.qr_code === decodedText ||
-                                            r.id === decodedText ||
-                                            `MF-${r.id.substring(0, 6)}`.toUpperCase() === decodedText
-                                        );
-
-                                        if (found) {
-                                            setSelectedReservation(found);
-                                            setIsScannerOpen(false);
-                                            setIsConfirmOpen(true);
-                                        } else {
+                                        try {
+                                            const found = await reservationService.verifyQR(decodedText, restaurantId!);
+                                            if (found) {
+                                                setSelectedReservation(found);
+                                                setIsScannerOpen(false);
+                                                setIsConfirmOpen(true);
+                                            }
+                                        } catch (error) {
+                                            console.error('QR Scan error:', error);
                                             alert('Reserva no encontrada o inválida para este restaurante.');
                                         }
                                     }}

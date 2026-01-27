@@ -12,13 +12,23 @@ router.get('/', async (req: Request, res: Response) => {
         const restaurantId = (req as any).user?.restaurantId;
         const today = new Date().toISOString().split('T')[0];
 
+        console.log(`[DASHBOARD DEBUG] Request by User: ${(req as any).user?.email} (${(req as any).user?.role})`);
+        console.log(`[DASHBOARD DEBUG] Target RestaurantID: ${restaurantId}`);
+        console.log(`[DASHBOARD DEBUG] Query Date (UTC): ${today}`);
+
         // 1. Reservas de hoy (pendientes, confirmadas, llegaron)
-        const { count: reservasHoy } = await supabaseAdmin
+        const { count: reservasHoy, error: errHoy } = await supabaseAdmin
             .from('reservations')
             .select('*', { count: 'exact', head: true })
             .eq('restaurant_id', restaurantId)
             .eq('date', today)
             .in('status', ['pending', 'confirmed', 'arrived']);
+
+        if (errHoy) {
+            console.error('[DASHBOARD ERROR] Error fetching today reservations:', errHoy);
+        } else {
+            console.log(`[DASHBOARD DEBUG] Reservas Hoy Found: ${reservasHoy}`);
+        }
 
         // 2. Estado de ocupación de mesas
         const { count: mesasOcupadas } = await supabaseAdmin

@@ -48,16 +48,16 @@ export const env: EnvConfig = {
     frontendUrl: getEnvVarOptional('FRONTEND_URL', 'http://localhost:8080'),
 
     // Supabase
-    supabaseUrl: getEnvVar('SUPABASE_URL', 'https://placeholder.supabase.co'),
-    supabaseAnonKey: getEnvVar('SUPABASE_ANON_KEY', process.env.SUPABASE_KEY || 'placeholder-anon-key'),
-    supabaseServiceRoleKey: getEnvVarOptional('SUPABASE_SERVICE_ROLE_KEY') || process.env.SUPABASE_SERVICE_KEY || '',
+    supabaseUrl: getEnvVar('SUPABASE_URL'),
+    supabaseAnonKey: getEnvVar('SUPABASE_ANON_KEY'),
+    supabaseServiceRoleKey: getEnvVar('SUPABASE_SERVICE_ROLE_KEY'),
 
     // JWT
-    jwtSecret: getEnvVarOptional('JWT_SECRET', 'development-secret-key'),
+    jwtSecret: getEnvVar('JWT_SECRET', 'development-secret-key'),
 
     // Stripe
-    stripeSecretKey: getEnvVarOptional('STRIPE_SECRET_KEY'),
-    stripeWebhookSecret: getEnvVarOptional('STRIPE_WEBHOOK_SECRET'),
+    stripeSecretKey: getEnvVar('STRIPE_SECRET_KEY'),
+    stripeWebhookSecret: getEnvVar('STRIPE_WEBHOOK_SECRET'),
 
     // Email
     resendApiKey: getEnvVarOptional('RESEND_API_KEY'),

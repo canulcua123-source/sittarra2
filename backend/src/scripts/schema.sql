@@ -20,9 +20,27 @@ CREATE TABLE IF NOT EXISTS public.users (
     avatar_url VARCHAR(500),
     role VARCHAR(20) DEFAULT 'customer' CHECK (role IN ('customer', 'restaurant_admin', 'staff', 'super_admin')),
     is_verified BOOLEAN DEFAULT false,
+    verification_code VARCHAR(10),
+    reset_token VARCHAR(100),
+    reset_token_expires TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
+
+-- ============================================
+-- 1.1 VERIFICATION CODES TABLE
+-- Para persistencia de códigos de email (registro, login, etc)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.verification_codes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    code VARCHAR(10) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_verification_email ON public.verification_codes(email);
 
 -- ============================================
 -- 2. RESTAURANTS TABLE
@@ -72,6 +90,9 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
         "reminderHours": [24, 2],
         "allowWalkIns": true
     }'::jsonb,
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    holidays JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
@@ -597,3 +618,23 @@ BEGIN
     RAISE NOTICE '✅ Sittara database schema v2.0 created successfully!';
     RAISE NOTICE '📊 Tables: users, restaurants, restaurant_staff, tables, reservations, offers, reviews, waitlist, menu_items, menu_categories, notifications, favorites';
 END $$;
+-- ============================================
+-- 12. AUDIT LOGS TABLE
+-- Seguimiento de acciones administrativas y cambios sensibles
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID,
+    old_values JSONB,
+    new_values JSONB,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_user_id ON public.audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON public.audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON public.audit_logs(entity_type, entity_id);

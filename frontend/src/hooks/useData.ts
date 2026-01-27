@@ -16,7 +16,8 @@ import {
     waitlistService,
     dashboardService,
     menuService,
-    timeSlotService
+    timeSlotService,
+    notificationService
 } from '@/services/api';
 import {
     Restaurant,
@@ -468,6 +469,46 @@ export const useReports = (period: 'week' | 'month' | 'quarter') => {
         queryKey: ['dashboard', 'reports', period],
         queryFn: () => dashboardService.getReports(period),
         staleTime: 5 * 60 * 1000, // 5 minutes
+    });
+};
+
+export const useNotifications = (limit = 20) => {
+    return useQuery({
+        queryKey: ['notifications', limit],
+        queryFn: () => notificationService.getAll(limit),
+        staleTime: 30 * 1000,
+        refetchInterval: 60 * 1000,
+    });
+};
+
+export const useUnreadNotifications = () => {
+    return useQuery({
+        queryKey: ['notifications', 'unread'],
+        queryFn: () => notificationService.getUnread(),
+        staleTime: 30 * 1000,
+        refetchInterval: 30 * 1000,
+        refetchOnWindowFocus: true,
+    });
+};
+
+export const useMarkNotificationRead = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => notificationService.markAsRead(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+    });
+};
+
+
+export const useMarkAllNotificationsRead = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: () => notificationService.markAllAsRead(),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
     });
 };
 

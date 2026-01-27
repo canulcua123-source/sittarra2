@@ -172,4 +172,93 @@ router.post('/webhook', async (req: Request, res: Response) => {
     }
 });
 
+
+/**
+ * POST /api/payments/refund
+ * Process a refund for a cancelled reservation
+ */
+router.post('/refund', authMiddleware, async (req: Request, res: Response) => {
+    try {
+        const { paymentIntentId, reservationId, reason } = req.body;
+
+        if (!paymentIntentId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Payment Intent ID is required'
+            });
+        }
+
+        // Verify the reservation exists and belongs to the user
+        if (reservationId) {
+            const { data: reservation, error: resError } = await supabaseAdmin
+                .from('reservations')
+                .select('user_id, status, deposit_paid')
+                .eq('id', reservationId)
+                .single();
+
+            if (resError || !reservation) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Reservation not found'
+                });
+            }
+
+            // Check ownership
+            if (reservation.user_id !== req.user!.id && req.user!.role !== 'super_admin') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Unauthorized to refund this reservation'
+                });
+            }
+
+            // Verify deposit was paid
+            if (!reservation.deposit_paid) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No deposit was paid for this reservation'
+                });
+            }
+        }
+
+        // Create refund via Stripe
+        const refund = await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            reason: reason || 'requested_by_customer',
+            metadata: {
+                reservationId: reservationId || '',
+                refundReason: reason || 'Customer requested cancellation'
+            }
+        });
+
+        // Update reservation to mark refund processed
+        if (reservationId && refund.status === 'succeeded') {
+            await supabaseAdmin
+                .from('reservations')
+                .update({
+                    deposit_paid: false,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', reservationId);
+        }
+
+        res.json({
+            success: true,
+            message: 'Refund processed successfully',
+            refund: {
+                id: refund.id,
+                amount: refund.amount / 100,
+                status: refund.status,
+                currency: refund.currency
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Refund error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Error processing refund'
+        });
+    }
+});
+
 export default router;

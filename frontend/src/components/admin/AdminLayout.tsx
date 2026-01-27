@@ -1,11 +1,11 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    LayoutDashboard, Calendar, Grid3X3, Users, ClipboardList,
+    LayoutDashboard, Calendar, Grid3X3, Users,
     Tag, UtensilsCrossed, Star, BarChart3, Sparkles, Settings,
     ChevronLeft, ChevronRight, Menu, X, Bell, LogOut, ChefHat,
-    User, HelpCircle, Moon, Sun
+    User, HelpCircle, Moon, Sun, ClipboardList
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,30 +19,24 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useRestaurantAuth } from '@/contexts/RestaurantAuthContext';
+import { useUnreadNotifications, useMarkNotificationRead, useDashboardMetrics } from '@/hooks/useData';
 import { toast } from 'sonner';
-import { useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface AdminLayoutProps {
     children: ReactNode;
 }
 
-const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
-    { icon: Calendar, label: 'Reservas', path: '/admin/reservas', badge: '4' },
-    { icon: Grid3X3, label: 'Mapa de Mesas', path: '/admin/mesas' },
-    { icon: Users, label: 'Registro Llegada', path: '/admin/llegadas' },
-    { icon: Tag, label: 'Ofertas', path: '/admin/ofertas', badge: '2' },
-    { icon: UtensilsCrossed, label: 'Menú Digital', path: '/admin/menu' },
-    { icon: Star, label: 'Opiniones', path: '/admin/opiniones' },
-    { icon: BarChart3, label: 'Reportes', path: '/admin/reportes' },
-    { icon: Sparkles, label: 'IA Sugerencias', path: '/admin/ia-sugerencias' },
-    { icon: Settings, label: 'Configuración', path: '/admin/configuracion' },
-];
-
 const AdminLayout = ({ children }: AdminLayoutProps) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, restaurant, logout } = useRestaurantAuth();
+
+    // Data hooks
+    const { data: notificationsData, refetch: refetchNotifications } = useUnreadNotifications();
+    const { mutate: markAsRead } = useMarkNotificationRead();
+    const { data: metrics } = useDashboardMetrics(restaurant?.id);
 
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -52,6 +46,28 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
         }
         return false;
     });
+
+    const unreadCount = notificationsData?.unreadCount || 0;
+    const notifications = notificationsData?.data || [];
+
+    // Define menu items
+    const menuItems = [
+        { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
+        {
+            icon: Calendar,
+            label: 'Reservas',
+            path: '/admin/reservas',
+            badge: metrics?.pendingConfirmations ? String(metrics.pendingConfirmations) : undefined
+        },
+        { icon: Grid3X3, label: 'Mapa de Mesas', path: '/admin/mesas' },
+        { icon: Users, label: 'Registro Llegada', path: '/admin/llegadas' },
+        { icon: Tag, label: 'Ofertas', path: '/admin/ofertas' },
+        { icon: UtensilsCrossed, label: 'Menú Digital', path: '/admin/menu' },
+        { icon: Star, label: 'Opiniones', path: '/admin/opiniones' },
+        { icon: BarChart3, label: 'Reportes', path: '/admin/reportes' },
+        { icon: Sparkles, label: 'IA Sugerencias', path: '/admin/ia-sugerencias' },
+        { icon: Settings, label: 'Configuración', path: '/admin/configuracion' },
+    ];
 
     useEffect(() => {
         if (isDarkMode) {
@@ -264,19 +280,38 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
                                 <HelpCircle className="w-5 h-5" />
                             </Button>
 
+                            {/* Notifications */}
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="icon" className="relative">
                                         <Bell className="w-5 h-5" />
+                                        {unreadCount > 0 && (
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
+                                        )}
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-80">
-                                    <div className="p-2 border-b">
+                                    <div className="p-3 border-b flex items-center justify-between">
                                         <h3 className="font-semibold">Notificaciones</h3>
+                                        {unreadCount > 0 && (
+                                            <Badge variant="secondary" className="text-xs">
+                                                {unreadCount} nuevas
+                                            </Badge>
+                                        )}
                                     </div>
-                                    <div className="p-8 text-center text-muted-foreground">
-                                        <Bell className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                        <p className="text-sm">No hay notificaciones</p>
+                                    <div className="max-h-[300px] overflow-y-auto">
+                                        {notifications.map((notif) => (
+                                            <div key={notif.id} className="px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0 relative group">
+                                                <div className="flex gap-3">
+                                                    <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${notif.unread ? 'bg-primary' : 'bg-transparent'}`} />
+                                                    <div className="flex-1 space-y-1">
+                                                        <p className="text-sm font-medium leading-none">{notif.title}</p>
+                                                        <p className="text-xs text-muted-foreground line-clamp-2">{notif.message}</p>
+                                                        <p className="text-[10px] text-muted-foreground/80">{notif.time}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </DropdownMenuContent>
                             </DropdownMenu>
