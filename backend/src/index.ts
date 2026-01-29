@@ -35,18 +35,19 @@ const app = express();
 app.use(helmet());
 
 // CORS configuration
+// CORS configuration
+// NOTE: We allow all origins ('*') initially to facilitate mobile app connection from various IPs.
+// In a strict production environment, we should list specific domains or use a function to validate origins.
 app.use(cors({
-    origin: [
-        'http://localhost:8080',
-        'http://localhost:8081',
-        'http://localhost:5173',
-        'http://localhost:3000',
-        env.frontendUrl
-    ].filter((val, index, self) => self.indexOf(val) === index),
+    origin: '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Trust the first proxy (Render/Heroku/etc load balancers)
+// This is required for correct IP rate limiting
+app.set('trust proxy', 1);
 
 // Rate limiting
 const limiter = rateLimit({
