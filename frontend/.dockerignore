@@ -1,0 +1,48 @@
+# ============================================
+# DOCKERIGNORE - Archivos excluidos del build
+# ============================================
+
+# Node modules
+node_modules
+npm-debug.log
+
+# Build artifacts
+dist
+build
+.vite
+
+# Environment files (excluding .env which is needed for production build)
+# .env  <- Removed to allow production config
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Testing
+coverage
+.nyc_output
+
+# Documentation
+README.md
+docs
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,280 @@
+{
+    "name": "Sittara Reservation Bot (HTTP Polling)",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "seconds",
+                            "secondsInterval": 10
+                        }
+                    ]
+                }
+            },
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/getUpdates",
+                "options": {}
+            },
+            "name": "Get Telegram Updates",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.ok }}",
+                            "value2": true
+                        }
+                    ],
+                    "number": [
+                        {
+                            "value1": "={{ $json.result.length }}",
+                            "operation": "larger",
+                            "value2": 0
+                        }
+                    ]
+                },
+                "combineOperation": "all"
+            },
+            "name": "Has Messages?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "fieldToSplitOut": "result"
+            },
+            "name": "Split Messages",
+            "type": "n8n-nodes-base.splitOut",
+            "typeVersion": 1,
+            "position": [
+                850,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/auth/customer/login",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\"email\": \"bot@sittara.com\", \"password\": \"BotPassword123!\"}",
+                "options": {}
+            },
+            "name": "Login to API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1050,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/restaurants",
+                "options": {}
+            },
+            "name": "Get Restaurants",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1250,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ 'http://backend:3001/api/restaurants/' + $json.data[0].id + '/tables/available?date=' + $now.plus({days: 1}).format('yyyy-MM-dd') + '&time=19:00&guests=2' }}",
+                "options": {}
+            },
+            "name": "Find Table",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/reservations",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ restaurantId: $node['Get Restaurants'].json.data[0].id, tableId: $json.data[0].id, date: $now.plus({days: 1}).format('yyyy-MM-dd'), time: '19:00', guestCount: 2 }) }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "={{ 'Bearer ' + $node['Login to API'].json.data.token }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Make Reservation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1650,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $node['Split Messages'].json.message.chat.id, text: '¡Reservación confirmada para mañana a las 19:00! Tu código es: ' + $json.data.qr_code }) }}",
+                "options": {}
+            },
+            "name": "Send Confirmation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1850,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/getUpdates",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ offset: $node['Split Messages'].json.update_id + 1 }) }}",
+                "options": {}
+            },
+            "name": "Mark as Read",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get Telegram Updates",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Telegram Updates": {
+            "main": [
+                [
+                    {
+                        "node": "Has Messages?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Messages?": {
+            "main": [
+                [
+                    {
+                        "node": "Split Messages",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split Messages": {
+            "main": [
+                [
+                    {
+                        "node": "Login to API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Login to API": {
+            "main": [
+                [
+                    {
+                        "node": "Get Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Find Table",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Table": {
+            "main": [
+                [
+                    {
+                        "node": "Make Reservation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Make Reservation": {
+            "main": [
+                [
+                    {
+                        "node": "Send Confirmation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Confirmation": {
+            "main": [
+                [
+                    {
+                        "node": "Mark as Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

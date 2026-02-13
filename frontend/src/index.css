@@ -1,0 +1,260 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Paleta Yucateca - Restaurantes Mérida */
+    --background: 35 30% 95%; /* Arena claro */
+    --foreground: 0 0% 18%; /* Gris oscuro */
+
+    --card: 35 25% 98%;
+    --card-foreground: 0 0% 18%;
+
+    --popover: 35 25% 98%;
+    --popover-foreground: 0 0% 18%;
+
+    /* Verde Jade - Confianza y elegancia */
+    --primary: 168 59% 30%;
+    --primary-foreground: 35 30% 98%;
+
+    /* Terracota - Calidez yucateca */
+    --secondary: 16 56% 50%;
+    --secondary-foreground: 35 30% 98%;
+
+    --muted: 35 20% 90%;
+    --muted-foreground: 0 0% 40%;
+
+    /* Acento terracota suave */
+    --accent: 16 40% 92%;
+    --accent-foreground: 16 56% 35%;
+
+    /* Estados */
+    --success: 122 39% 49%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 45 100% 51%;
+    --warning-foreground: 0 0% 18%;
+
+    --destructive: 4 74% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Mesa estados */
+    --mesa-disponible: 122 39% 49%;
+    --mesa-ocupada: 4 74% 55%;
+    --mesa-pendiente: 45 100% 51%;
+    --mesa-reservada: 168 59% 30%;
+
+    --border: 35 20% 85%;
+    --input: 35 20% 88%;
+    --ring: 168 59% 30%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar */
+    --sidebar-background: 168 59% 25%;
+    --sidebar-foreground: 35 30% 95%;
+    --sidebar-primary: 35 30% 98%;
+    --sidebar-primary-foreground: 168 59% 25%;
+    --sidebar-accent: 168 50% 20%;
+    --sidebar-accent-foreground: 35 30% 95%;
+    --sidebar-border: 168 40% 35%;
+    --sidebar-ring: 16 56% 50%;
+
+    /* Gradientes */
+    --gradient-hero: linear-gradient(135deg, hsl(168 59% 30%) 0%, hsl(168 45% 40%) 100%);
+    --gradient-terracota: linear-gradient(135deg, hsl(16 56% 50%) 0%, hsl(16 45% 60%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(35 25% 100%) 0%, hsl(35 20% 96%) 100%);
+    --gradient-overlay: linear-gradient(180deg, transparent 0%, hsla(0 0% 0% / 0.6) 100%);
+    
+    /* Sombras elegantes */
+    --shadow-soft: 0 4px 20px -4px hsla(0 0% 0% / 0.1);
+    --shadow-card: 0 8px 30px -8px hsla(0 0% 0% / 0.12);
+    --shadow-elevated: 0 20px 50px -12px hsla(0 0% 0% / 0.2);
+  }
+
+  .dark {
+    --background: 0 0% 12%;
+    --foreground: 35 30% 95%;
+
+    --card: 0 0% 15%;
+    --card-foreground: 35 30% 95%;
+
+    --popover: 0 0% 15%;
+    --popover-foreground: 35 30% 95%;
+
+    --primary: 168 50% 45%;
+    --primary-foreground: 0 0% 10%;
+
+    --secondary: 16 50% 55%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 0 0% 20%;
+    --muted-foreground: 35 20% 65%;
+
+    --accent: 168 30% 20%;
+    --accent-foreground: 168 50% 70%;
+
+    --destructive: 4 60% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 168 50% 45%;
+
+    --sidebar-background: 0 0% 10%;
+    --sidebar-foreground: 35 30% 95%;
+    --sidebar-primary: 168 50% 45%;
+    --sidebar-primary-foreground: 0 0% 10%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 35 30% 95%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-ring: 16 50% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  /* Botones hero */
+  .btn-hero {
+    @apply bg-primary text-primary-foreground px-8 py-4 rounded-full font-semibold text-lg;
+    @apply transition-all duration-300 ease-out;
+    @apply hover:scale-105 hover:shadow-elevated;
+    background: var(--gradient-hero);
+  }
+
+  .btn-secondary-hero {
+    @apply bg-secondary text-secondary-foreground px-8 py-4 rounded-full font-semibold text-lg;
+    @apply transition-all duration-300 ease-out;
+    @apply hover:scale-105 hover:shadow-elevated;
+    background: var(--gradient-terracota);
+  }
+
+  /* Tarjetas restaurante */
+  .card-restaurant {
+    @apply bg-card rounded-2xl overflow-hidden;
+    box-shadow: var(--shadow-card);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-restaurant:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-elevated);
+  }
+
+  /* Mesas interactivas */
+  .mesa {
+    @apply rounded-xl transition-all duration-300 cursor-pointer;
+    @apply flex items-center justify-center font-semibold;
+  }
+
+  .mesa-disponible {
+    background-color: hsl(var(--mesa-disponible));
+    @apply text-white hover:scale-110 hover:shadow-lg;
+  }
+
+  .mesa-ocupada {
+    background-color: hsl(var(--mesa-ocupada));
+    @apply text-white cursor-not-allowed opacity-80;
+  }
+
+  .mesa-pendiente {
+    background-color: hsl(var(--mesa-pendiente));
+    @apply text-foreground;
+  }
+
+  .mesa-reservada {
+    background-color: hsl(var(--mesa-reservada));
+    @apply text-white cursor-not-allowed;
+  }
+
+  /* Chips de filtro */
+  .filter-chip {
+    @apply px-4 py-2 rounded-full text-sm font-medium transition-all duration-200;
+    @apply bg-muted text-muted-foreground;
+    @apply hover:bg-primary hover:text-primary-foreground;
+  }
+
+  .filter-chip-active {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  /* Badge de oferta */
+  .badge-oferta {
+    @apply bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide;
+  }
+
+  /* Estado abierto/cerrado */
+  .estado-abierto {
+    @apply bg-success/20 text-success px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .estado-cerrado {
+    @apply bg-destructive/20 text-destructive px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  /* Animaciones */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse-soft {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  /* Glassmorphism suave */
+  .glass {
+    @apply backdrop-blur-md;
+    background: hsla(35, 25%, 98%, 0.85);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-text {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}

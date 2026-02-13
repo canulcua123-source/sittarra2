@@ -1,0 +1,65 @@
+@baseUrl = http://localhost:3001/api
+@contentType = application/json
+@token = {{login.response.body.data.token}}
+
+### ==========================================
+### HEALTH CHECK
+### ==========================================
+
+### Health Check
+GET {{baseUrl}}/health
+
+### ==========================================
+### AUTHENTICATION
+### ==========================================
+
+### Customer Register
+POST {{baseUrl}}/auth/customer/register
+Content-Type: {{contentType}}
+
+{
+    "name": "Test Customer",
+    "email": "customer@test.com",
+    "password": "password123",
+    "phone": "9999999999"
+}
+
+### Customer Login
+# @name login
+POST {{baseUrl}}/auth/customer/login
+Content-Type: {{contentType}}
+
+{
+    "email": "customer@test.com",
+    "password": "password123"
+}
+
+### Verify Token
+GET {{baseUrl}}/auth/verify
+Authorization: Bearer {{token}}
+
+### ==========================================
+### RESTAURANTS
+### ==========================================
+
+### Get All Restaurants
+GET {{baseUrl}}/restaurants
+
+### Get Featured Restaurants
+GET {{baseUrl}}/restaurants/featured
+
+### Get Restaurant Details (Replace :id with actual ID)
+@restaurantId = put_valid_restaurant_id_here
+GET {{baseUrl}}/restaurants/{{restaurantId}}
+
+### Get Restaurant Menu
+GET {{baseUrl}}/restaurants/{{restaurantId}}/menu
+
+### Get Restaurant Tables
+GET {{baseUrl}}/restaurants/{{restaurantId}}/tables
+
+### Check Table Availability
+GET {{baseUrl}}/restaurants/{{restaurantId}}/tables/available?date=2025-02-01&time=20:00&guests=2
+
+### Get Restaurant Offers
+GET {{baseUrl}}/restaurants/{{restaurantId}}/offers

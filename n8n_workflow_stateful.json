@@ -1,0 +1,743 @@
+{
+    "name": "Sittara Chatbot con Estado",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "seconds",
+                            "secondsInterval": 10
+                        }
+                    ]
+                }
+            },
+            "name": "Poll Every 10s",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/getUpdates",
+                "options": {}
+            },
+            "name": "Get Updates",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                450,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.ok }}",
+                            "value2": true
+                        }
+                    ],
+                    "number": [
+                        {
+                            "value1": "={{ $json.result.length }}",
+                            "operation": "larger",
+                            "value2": 0
+                        }
+                    ]
+                },
+                "combineOperation": "all"
+            },
+            "name": "Has Messages?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                650,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "fieldToSplitOut": "result"
+            },
+            "name": "Split",
+            "type": "n8n-nodes-base.splitOut",
+            "typeVersion": 1,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "userMessage",
+                            "value": "={{ $json.message.text }}"
+                        },
+                        {
+                            "name": "chatId",
+                            "value": "={{ $json.message.chat.id }}"
+                        },
+                        {
+                            "name": "updateId",
+                            "value": "={{ $json.update_id }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Extract Data",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ 'http://backend:3001/api/chatbot/state/' + $json.chatId }}",
+                "options": {}
+            },
+            "name": "Get State",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const userMsg = $input.first().json.userMessage.toLowerCase().trim();\nconst chatId = $input.first().json.chatId;\nconst currentState = $input.last().json.data;\n\n// Check for reset commands\nif (userMsg === '/start' || userMsg === 'menu' || userMsg === 'inicio') {\n  return {\n    json: {\n      ...$input.first().json,\n      state: { step: 'menu', data: {} },\n      action: 'show_menu'\n    }\n  };\n}\n\nconst step = currentState.step || 'menu';\nconst data = currentState.data || {};\n\nlet nextState = {};\nlet action = '';\n\nswitch (step) {\n  case 'start':\n  case 'menu':\n    if (userMsg === '1') {\n      nextState = { step: 'ask_cuisine', data: {} };\n      action = 'ask_cuisine';\n    } else if (userMsg === '2') {\n      nextState = { step: 'menu', data: {} };\n      action = 'show_support';\n    } else {\n      nextState = { step: 'menu', data: {} };\n      action = 'show_menu';\n    }\n    break;\n\n  case 'ask_cuisine':\n    if (/^[1-8]$/.test(userMsg)) {\n      const cuisines = ['Yucateca', 'Mariscos', 'Fusión', 'Internacional', 'Italiana', 'Mexicana', 'Japonesa', 'Otro'];\n      const selectedCuisine = cuisines[parseInt(userMsg) - 1];\n      nextState = { step: 'select_restaurant', data: { cuisine: selectedCuisine } };\n      action = 'show_restaurants';\n    } else {\n      nextState = { step: 'ask_cuisine', data: {} };\n      action = 'ask_cuisine';\n    }\n    break;\n\n  case 'select_restaurant':\n    if (/^[0-9]+$/.test(userMsg)) {\n      const index = parseInt(userMsg) - 1;\n      nextState = { step: 'complete', data: { ...data, restaurantIndex: index } };\n      action = 'create_reservation';\n    } else {\n      nextState = { step: 'select_restaurant', data };\n      action = 'show_restaurants';\n    }\n    break;\n\n  default:\n    nextState = { step: 'menu', data: {} };\n    action = 'show_menu';\n}\n\nreturn {\n  json: {\n    ...$input.first().json,\n    state: nextState,\n    action: action,\n    cuisineData: data.cuisine || null,\n    restaurantIndex: data.restaurantIndex !== undefined ? data.restaurantIndex : null\n  }\n};"
+            },
+            "name": "Process State",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ 'http://backend:3001/api/chatbot/state/' + $json.chatId }}",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ step: $json.state.step, data: $json.state.data }) }}"
+            },
+            "name": "Save State",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                1650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action }}",
+                            "value2": "show_menu"
+                        }
+                    ]
+                }
+            },
+            "name": "Action: Menu?",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '🍽️ ¡Hola! Bienvenido a Sittara\\n\\n¿Qué deseas hacer?\\n\\n1️⃣ Hacer una reserva\\n2️⃣ Contactar soporte\\n\\nEscribe el número (1 o 2)' }) }}"
+            },
+            "name": "Send Menu",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action }}",
+                            "value2": "ask_cuisine"
+                        }
+                    ]
+                }
+            },
+            "name": "Action: Cuisine?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '🍴 ¿Qué tipo de comida prefieres?\\n\\n1️⃣ Yucateca\\n2️⃣ Mariscos\\n3️⃣ Fusión\\n4️⃣ Internacional\\n5️⃣ Italiana\\n6️⃣ Mexicana\\n7️⃣ Japonesa\\n8️⃣ Otro\\n\\nEscribe el número' }) }}"
+            },
+            "name": "Send Cuisine Options",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action }}",
+                            "value2": "show_restaurants"
+                        }
+                    ]
+                }
+            },
+            "name": "Action: Restaurants?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                700
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/restaurants",
+                "options": {}
+            },
+            "name": "Get Restaurants",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                700
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const cuisine = $input.first().json.cuisineData;\nconst allRestaurants = $input.last().json.data || [];\n\nconst filtered = allRestaurants.filter(r => r.cuisine === cuisine);\n\nif (filtered.length === 0) {\n  return {\n    json: {\n      ...$input.first().json,\n      messageText: `No hay restaurantes de ${cuisine} disponibles.\\nEscribe \"menu\" para volver.`\n    }\n  };\n}\n\nlet msg = `🏪 Restaurantes de ${cuisine}:\\n\\n`;\nfiltered.forEach((r, i) => {\n  msg += `${i + 1}️⃣ ${r.name}\\n   📍 ${r.address || 'Sin dirección'}\\n   💰 ${r.priceRange}\\n\\n`;\n});\nmsg += 'Escribe el número del restaurante';\n\nreturn {\n  json: {\n    ...$input.first().json,\n    messageText: msg,\n    filteredRestaurants: filtered\n  }\n};"
+            },
+            "name": "Format Restaurants",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2250,
+                700
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: $json.messageText }) }}"
+            },
+            "name": "Send Restaurants",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2450,
+                700
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action }}",
+                            "value2": "create_reservation"
+                        }
+                    ]
+                }
+            },
+            "name": "Action: Reserve?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/auth/customer/login",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\"email\": \"bot@sittara.com\", \"password\": \"BotPassword123!\"}"
+            },
+            "name": "Login",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/restaurants",
+                "options": {}
+            },
+            "name": "Get All Restaurants",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2250,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const idx = $input.first().json.restaurantIndex || 0;\nconst restaurants = $input.last().json.data || [];\nconst restaurant = restaurants[idx];\n\nif (!restaurant) throw new Error('Restaurant not found');\n\nconst times = ['12:00','13:00','14:00','18:00','19:00','19:30','20:00','20:30','21:00','21:30'];\nconst time = times[Math.floor(Math.random() * times.length)];\nconst guests = Math.floor(Math.random() * 5) + 2;\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst date = tomorrow.toISOString().split('T')[0];\n\nreturn {\n  json: {\n    ...$input.first().json,\n    restaurant,\n    time,\n    guests,\n    date\n  }\n};"
+            },
+            "name": "Prepare Reservation",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2450,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{ 'http://backend:3001/api/restaurants/' + $json.restaurant.id + '/tables/available?date=' + $json.date + '&time=' + $json.time + '&guests=' + $json.guests }}"
+            },
+            "name": "Find Table",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2650,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/reservations",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ restaurantId: $node['Prepare Reservation'].json.restaurant.id, tableId: $json.data[0]?.id || null, date: $node['Prepare Reservation'].json.date, time: $node['Prepare Reservation'].json.time, guestCount: $node['Prepare Reservation'].json.guests }) }}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "={{ 'Bearer ' + $node['Login'].json.data.token }}"
+                        }
+                    ]
+                }
+            },
+            "name": "Create Reservation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2850,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $node['Prepare Reservation'].json.chatId, text: '✅ ¡Reservación confirmada!\\n\\n🏪 ' + $node['Prepare Reservation'].json.restaurant.name + '\\n📅 ' + $node['Prepare Reservation'].json.date + '\\n🕐 ' + $node['Prepare Reservation'].json.time + '\\n👥 ' + $node['Prepare Reservation'].json.guests + ' personas\\n🎫 QR: ' + ($json.data?.qr_code || 'Ver en app') + '\\n\\n¡Gracias por usar Sittara! 😊' }) }}"
+            },
+            "name": "Send Confirmation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                3050,
+                900
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action }}",
+                            "value2": "show_support"
+                        }
+                    ]
+                }
+            },
+            "name": "Action: Support?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/sendMessage",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '📞 Contacto Sittara\\n\\n✉️ soporte@sittara.com\\n📱 +52 999 123 4567\\n🕐 Lun-Vie 9-18h\\n\\nEscribe \"menu\" para volver' }) }}"
+            },
+            "name": "Send Support",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                2050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.telegram.org/bot8278057212:AAEApxvwDixJHsK5kC_Xhts5O-zYclDa8LQ/getUpdates",
+                "method": "POST",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ offset: $json.updateId + 1 }) }}"
+            },
+            "name": "Mark Read",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4,
+            "position": [
+                3300,
+                600
+            ]
+        }
+    ],
+    "connections": {
+        "Poll Every 10s": {
+            "main": [
+                [
+                    {
+                        "node": "Get Updates",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Updates": {
+            "main": [
+                [
+                    {
+                        "node": "Has Messages?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Messages?": {
+            "main": [
+                [
+                    {
+                        "node": "Split",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Split": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Data": {
+            "main": [
+                [
+                    {
+                        "node": "Get State",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get State": {
+            "main": [
+                [
+                    {
+                        "node": "Process State",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Process State": {
+            "main": [
+                [
+                    {
+                        "node": "Save State",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save State": {
+            "main": [
+                [
+                    {
+                        "node": "Action: Menu?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Action: Menu?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Menu",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Action: Cuisine?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Menu": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Action: Cuisine?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Cuisine Options",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Action: Restaurants?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Cuisine Options": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Action: Restaurants?": {
+            "main": [
+                [
+                    {
+                        "node": "Get Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Action: Reserve?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Format Restaurants",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Format Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Send Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Action: Reserve?": {
+            "main": [
+                [
+                    {
+                        "node": "Login",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Action: Support?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Login": {
+            "main": [
+                [
+                    {
+                        "node": "Get All Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get All Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Reservation",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Prepare Reservation": {
+            "main": [
+                [
+                    {
+                        "node": "Find Table",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Table": {
+            "main": [
+                [
+                    {
+                        "node": "Create Reservation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Reservation": {
+            "main": [
+                [
+                    {
+                        "node": "Send Confirmation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Confirmation": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Action: Support?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Support",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send Support": {
+            "main": [
+                [
+                    {
+                        "node": "Mark Read",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

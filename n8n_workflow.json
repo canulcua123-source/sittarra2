@@ -1,0 +1,210 @@
+{
+    "name": "Sittara Reservation Bot",
+    "nodes": [
+        {
+            "parameters": {
+                "updates": [
+                    "message"
+                ]
+            },
+            "name": "Telegram Trigger",
+            "type": "n8n-nodes-base.telegramTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "manual-trigger"
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/auth/customer/login",
+                "method": "POST",
+                "sendBody": true,
+                "contentType": "json",
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "email",
+                            "value": "bot@sittara.com"
+                        },
+                        {
+                            "name": "password",
+                            "value": "BotPassword123!"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Login to API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/restaurants",
+                "options": {}
+            },
+            "name": "Get Restaurants",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "={{'http://backend:3001/api/restaurants/' + $json.data[0].id + '/tables/available'}}",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "date",
+                            "value": "={{$now.format('yyyy-MM-dd')}}"
+                        },
+                        {
+                            "name": "time",
+                            "value": "19:00"
+                        },
+                        {
+                            "name": "guests",
+                            "value": "2"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Find Table",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://backend:3001/api/reservations",
+                "method": "POST",
+                "sendBody": true,
+                "contentType": "json",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "={{'Bearer ' + $('Login to API').item.json.data.token}}"
+                        }
+                    ]
+                },
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "restaurantId",
+                            "value": "={{$('Get Restaurants').item.json.data[0].id}}"
+                        },
+                        {
+                            "name": "tableId",
+                            "value": "={{$json.data[0].id}}"
+                        },
+                        {
+                            "name": "date",
+                            "value": "={{$now.format('yyyy-MM-dd')}}"
+                        },
+                        {
+                            "name": "time",
+                            "value": "19:00"
+                        },
+                        {
+                            "name": "guestCount",
+                            "value": 2
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Make Reservation",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "chatId": "={{$('Telegram Trigger').item.json.message.chat.id}}",
+                "text": "={{'¡Reservación confirmada! Tu código es: ' + $json.data.qr_code}}",
+                "additionalFields": {}
+            },
+            "name": "Send Confirmation",
+            "type": "n8n-nodes-base.telegram",
+            "typeVersion": 1,
+            "position": [
+                1250,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Telegram Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Login to API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Login to API": {
+            "main": [
+                [
+                    {
+                        "node": "Get Restaurants",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Restaurants": {
+            "main": [
+                [
+                    {
+                        "node": "Find Table",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Table": {
+            "main": [
+                [
+                    {
+                        "node": "Make Reservation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Make Reservation": {
+            "main": [
+                [
+                    {
+                        "node": "Send Confirmation",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
